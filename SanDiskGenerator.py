@@ -1,19 +1,19 @@
+import os
 import pandas as pd
 import numpy as np
 
 class SanDiskGenerator(object):
-    def __init__(self, fname_pos='../SanDisk/bank2_nonfails.csv', fname_neg='../SanDisk/bank2_fails.csv', do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
+    def __init__(self, path='../SanDisk/', do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
 
-        self.fname_pos = fname_pos
-        self.fname_neg = fname_neg
+        self.path = path
+        
+        if train:
+            prefix = 'tr_'
+        else:
+            prefix = 'test_'
 
-        # if train:
-        #     prefix = 'tr_'
-        # else:
-        #     prefix = 'test_'
-
-        df_pos = pd.read_csv(self.fname_pos)
-        df_neg = pd.read_csv(self.fname_neg)
+        df_pos = pd.read_csv(os.path.join(self.path, prefix + 'pos.csv'))
+        df_neg = pd.read_csv(os.path.join(self.path, prefix + 'neg.csv'))
         df_pos = df_pos.drop(columns=['Unnamed: 0', 'PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_neg = df_neg.drop(columns=['Unnamed: 0', 'PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_pos = df_pos.fillna(0) # remove NaN values.
