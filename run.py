@@ -5,6 +5,7 @@ import argparse
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
 from PointCloudGenerator import PointCloudGenerator
+from SanDiskGenerator import SanDiskGenerator
 
 import models
 
@@ -19,7 +20,7 @@ parser.add_argument('--training_steps', required=True, type=int)
 parser.add_argument('--batch_size', required=True, type=int)
 parser.add_argument('--n_hidden_dim', required=True, type=int)
 parser.add_argument('--experiment', required=True, type=str, choices=
-                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty'])
+                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk'])
 
 ######################
 # Optional Arguments
@@ -54,7 +55,7 @@ if args.experiment == 'pnt-cld':
     data_params = {'down_sample': 100} 
     seq_max_len = 100
     use_seqlen = False
-
+    eval_on_varying_seq = False
 
 elif args.experiment in ['img-max', 'img-sum']:
     DataGenerator = MNISTImageGenerator
@@ -68,6 +69,7 @@ elif args.experiment in ['img-max', 'img-sum']:
                    'mode': mode}
     seq_max_len = 10
     use_seqlen = True
+    eval_on_varying_seq = True
     test_sequences = np.arange(5, 55, 5)
     num_test_examples = 500
 
@@ -82,9 +84,18 @@ elif args.experiment in ['dgt-max', 'dgt-sum', 'dgt-prty']:
                    'mode': mode}
     seq_max_len = 10
     use_seqlen = True
+    eval_on_varying_seq = True
     test_sequences = np.arange(10, 110, 10)
     num_test_examples = 500
 
+elif args.experiment == 'san-disk':
+    DataGenerator = SanDiskGenerator
+    n_input_dim = 11
+    n_output_dim = 2
+    data_params = {} 
+    seq_max_len = 50
+    use_seqlen = True
+    eval_on_varying_seq = False
 
 n_computation_dim = args.n_computation_dim
 if n_computation_dim == 0:
@@ -140,8 +151,10 @@ else:
 
 if n_output_dim == 1:
     loss = tf.losses.mean_squared_error(labels=y, predictions=pred)
+    correct_pred = tf.equal(tf.round(pred), y)
 else:
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=pred))
+    correct_pred = tf.equal(tf.argmax(pred, axis=1), tf.argmax(y, axis=1))
 # cost = loss + comm_reg_weight*empricial_regularization_loss + expct_comm_reg_weight*commutative_regularization_term
 cost = loss if commutative_regularization_term is None else \
                 loss + expct_comm_reg_weight*commutative_regularization_term
@@ -152,7 +165,7 @@ train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
 # optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
 
 # Evaluate model
-correct_pred = tf.equal(tf.round(pred), y)
+
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 summary_ops = [cost, accuracy]
@@ -189,7 +202,9 @@ with tf.Session() as sess:
             # Calculate batch accuracy & loss
 
             _summary_ops =  sess.run(summary_ops, feed_dict=curr_feed_dict)
-            
+            # _pred, _y = sess.run([tf.round(pred), y], feed_dict=curr_feed_dict)
+            # print('DEBUG pred: {}'.format(_pred))
+            # print('DEBUG y: {}'.format(_y))
             summary_print = "Step " + str(step) + ", Minibatch Loss=" + \
                             "{:.6f}".format(_summary_ops[0]) + ", Training Accuracy=" + \
                             "{:.5f}".format(_summary_ops[1]) + \
@@ -217,7 +232,7 @@ with tf.Session() as sess:
         sess.run(accuracy, feed_dict=test_feed_dict))
 
 
-    if use_seqlen:
+    if eval_on_varying_seq:
         for curr_seq_len in test_sequences:
 
             test_x_ph = tf.placeholder("float", [None, curr_seq_len, n_input_dim])

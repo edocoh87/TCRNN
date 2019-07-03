@@ -105,10 +105,10 @@ class PointCloudGenerator(object):
 
 
 if __name__=='__main__':
-    sample = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5')
-    sample_test = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5', mode='test')
-    print(len(sample.data))
-    print(len(sample_test.data))
+    sample = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5', down_sample=1000)
+    # sample_test = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5', mode='test')
+    # print(sample.next(2)[1].shape)
+    print(sample.data.shape)
     # for i in range(5):
     #     batch_data, batch_labels = sample.next(10)
         # print(batch_data.shape)

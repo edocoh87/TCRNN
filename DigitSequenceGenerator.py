@@ -71,9 +71,9 @@ class DigitSequenceGenerator(object):
         return batch_data, batch_labels, batch_seqlen
 
 if __name__=='__main__':
-    sample = DigitSequenceGenerator()
-    for i in range(5):
-        batch_data, batch_labels, batch_seqlen = sample.next(10)
-        print(batch_data[0])
+    sample = DigitSequenceGenerator(n_samples=20)
+    for i in range(1):
+        batch_data, batch_labels, batch_seqlen = sample.next(3)
+        print(np.array(batch_data))
         print(batch_labels)
         print(batch_seqlen)
