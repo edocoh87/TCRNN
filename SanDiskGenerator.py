@@ -22,12 +22,13 @@ class SanDiskGenerator(object):
         n_cycles = int(df_neg.shape[1] / n_features)
 
         # check where is the first cycle that the prog_status_cyc is '1' (which means failure)...
-        df_neg_status_prog = np.array([df_neg['Prog_Status_cyc_{}'.format(i)].values for i in range(1, n_cycles)]).transpose()
+        df_neg_status_prog = np.array([df_neg['Prog_Status_cyc_{}'.format(i)].values for i in range(1, n_cycles + 1)]).transpose()
 
         # generate sequence lengths, for the failed sequences it's computed above and for the 
         # positive sequences it's randomized.
+        np.random.seed(0)
         self.seqlen = np.concatenate((np.argmax(df_neg_status_prog, axis=1),
-                                    np.random.randint(n_cycles, size=len(df_pos))))
+                                    np.random.randint(low=1, high=n_cycles + 1, size=len(df_pos))))
 
         # take each row and convert it from n_cycles*n_features to an array with shape (n_cycles, n_features)
         data_neg = [df_neg.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_neg))]
