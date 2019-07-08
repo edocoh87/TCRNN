@@ -1,21 +1,24 @@
 import os
 import pandas as pd
 import numpy as np
+from glob import glob
+from socket import gethostname
 
 class SanDiskGenerator(object):
-    def __init__(self, path='../SanDisk/', do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
+    def __init__(self, do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
 
-        self.path = path
-        
+        self.path = '../new_data/PC3/' if gethostname() == 'nova' else '../SanDisk/'
+
         if train:
-            prefix = 'tr_'
+            prefix = 'train'
         else:
-            prefix = 'test_'
+            prefix = 'val'
 
-        df_pos = pd.read_csv(os.path.join(self.path, prefix + 'pos.csv'))
-        df_neg = pd.read_csv(os.path.join(self.path, prefix + 'neg.csv'))
-        df_pos = df_pos.drop(columns=['Unnamed: 0', 'PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
-        df_neg = df_neg.drop(columns=['Unnamed: 0', 'PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
+        pos_dfs = [pd.read_csv(x) for x in glob(os.path.join(self.path, 'fails', prefix, '*.csv'))]
+        df_pos = pos_dfs[0].append(pos_dfs[1:])
+        df_neg = pd.read_csv(glob(os.path.join(self.path, 'non_fails', prefix, '*.csv'))[0])
+        df_pos = df_pos.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
+        df_neg = df_neg.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_pos = df_pos.fillna(0) # remove NaN values.
         df_neg = df_neg.fillna(0)
 
