@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import argparse
+from pdb import set_trace as trace
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
@@ -8,6 +9,7 @@ from PointCloudGenerator import PointCloudGenerator
 from SanDiskGenerator import SanDiskGenerator
 
 import models
+from utils import *
 
 ######################
 # Required Arguments
@@ -15,7 +17,6 @@ import models
 parser = argparse.ArgumentParser(description='Run set experiments.')
 parser.add_argument('--model', required=True, type=str, choices=['CommRNN', 'DeepSet'],
                                 help="model to use for experiment.")
-parser.add_argument('--display_step', type=int, default=200)
 parser.add_argument('--training_steps', required=True, type=int)
 parser.add_argument('--batch_size', required=True, type=int)
 parser.add_argument('--n_hidden_dim', required=True, type=int)
@@ -25,11 +26,14 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 # Optional Arguments
 ######################
+parser.add_argument('--display_step', type=int, default=200)
+parser.add_argument('--exp_name', type=str, default='unnamed_exp')
 parser.add_argument('--n_computation_dim', type=int, default=0)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
+parser.add_argument("--debug", action="store_true")
 
 
 args = parser.parse_args()
@@ -92,7 +96,9 @@ elif args.experiment == 'san-disk':
     DataGenerator = SanDiskGenerator
     n_input_dim = 11
     n_output_dim = 2
-    data_params = {} 
+    data_params = {
+        'debug_mode': args.debug
+    }
     seq_max_len = 50
     use_seqlen = True
     eval_on_varying_seq = False
@@ -174,6 +180,7 @@ if not commutative_regularization_term is None:
 
 # Initialize the variables (i.e. assign their default value)
 init = tf.global_variables_initializer()
+saver = tf.train.Saver()
 
 # Start training
 with tf.Session() as sess:
@@ -219,18 +226,30 @@ with tf.Session() as sess:
             #   print('pred {}, target {}, sequence length {}'.format(_pred[i], batch_y[i], batch_seqlen[i]))
 
     print("Optimization Finished!")
+    save_path = 'models/{}'.format(args.exp_name)
+    os.makedirs(save_path, exist_ok=True)
+    ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
+
+    print("Saved model to file: {}".format(ckpt_save_path))
 
     # Calculate accuracy
     if use_seqlen:
-        test_data, test_label, test_seqlen = trainset.next()
+        test_data, test_label, test_seqlen = testset.next()
         test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
     else:
-        test_data, test_label = trainset.next()
+        test_data, test_label = testset.next()
         test_feed_dict = {x: test_data, y: test_label}
     # test_seqlen = testset.seqlen
-    print("Testing Accuracy:", \
+    print("Testing Accuracy:",
         sess.run(accuracy, feed_dict=test_feed_dict))
+    test_pred_scores = sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict)
+    test_pred_labels = np.argmax(test_pred_scores, axis=1)
+    true_labels = np.argmax(test_label, axis=1)
 
+    print_confusion_matrix(true_labels, test_pred_labels)
+    print_normed_confusion_matrix(true_labels, test_pred_labels)
+    plot_roc_curve(true_labels, test_pred_scores, save_path)
+    print_confusion_matrix_w_thresh(true_labels, test_pred_scores, thresh=0.188)
 
     if eval_on_varying_seq:
         for curr_seq_len in test_sequences:

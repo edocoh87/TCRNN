@@ -2,24 +2,26 @@ import os
 import pandas as pd
 import numpy as np
 from glob import glob
+from pdb import set_trace as trace
 from socket import gethostname
 
 class SanDiskGenerator(object):
-    def __init__(self, do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
+    def __init__(self, debug_mode=False, do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
 
-        self.path = '../new_data/PC3/' if gethostname() == 'nova' else '../SanDisk/'
-
+        self.path = '../new_data/PC3/'  # if gethostname() == 'nova' else '../SanDisk/'
+        self.take_last_k_cycles = take_last_k_cycles
         if train:
             prefix = 'train'
         else:
             prefix = 'val'
 
-        pos_dfs = [pd.read_csv(x) for x in glob(os.path.join(self.path, 'fails', prefix, '*.csv'))]
-        df_pos = pos_dfs[0].append(pos_dfs[1:])
-        df_neg = pd.read_csv(glob(os.path.join(self.path, 'non_fails', prefix, '*.csv'))[0])
+        neg_dfs = [pd.read_csv(x) for x in glob(os.path.join(self.path, 'fails', prefix, '*.csv'))]
+        df_neg = neg_dfs[0].append(neg_dfs[1:])
+        df_pos = pd.read_csv(glob(os.path.join(self.path, 'non_fails', prefix, 'short' if debug_mode else '.', '*.csv'))
+                             [0])
         df_pos = df_pos.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_neg = df_neg.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
-        df_pos = df_pos.fillna(0) # remove NaN values.
+        df_pos = df_pos.fillna(0)  # remove NaN values.
         df_neg = df_neg.fillna(0)
 
         n_cycles = int(df_neg.shape[1] / n_features)
@@ -29,9 +31,9 @@ class SanDiskGenerator(object):
 
         # generate sequence lengths, for the failed sequences it's computed above and for the 
         # positive sequences it's randomized.
-        np.random.seed(0)
+        np.random.seed(0)  # in order to make sure that we're getting the same seqlens across different runs
         self.seqlen = np.concatenate((np.argmax(df_neg_status_prog, axis=1),
-                                    np.random.randint(low=1, high=n_cycles + 1, size=len(df_pos))))
+                                      np.random.randint(low=1, high=n_cycles + 1, size=len(df_pos))))
 
         # take each row and convert it from n_cycles*n_features to an array with shape (n_cycles, n_features)
         data_neg = [df_neg.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_neg))]
@@ -59,7 +61,7 @@ class SanDiskGenerator(object):
             np.random.shuffle(self.data)
             np.random.set_state(rng_state)
             np.random.shuffle(self.labels)
-            
+
         end_idx = min(self.batch_id + batch_size, len(self.data))
         batch_data = (self.data[self.batch_id:end_idx])
         batch_labels = self.labels[self.batch_id:end_idx]
