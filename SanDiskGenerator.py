@@ -20,7 +20,6 @@ class SanDiskGenerator(object):
         df_pos = pd.read_csv(glob(os.path.join(self.path, 'non_fails', prefix, 'short' if debug_mode else '.', '*.csv'))
                              [0])
         df_neg = neg_dfs[0].append(neg_dfs[1:])
-        end_pos_read = time.time()
         df_pos = df_pos.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_neg = df_neg.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_pos = df_pos.fillna(0)  # remove NaN values.
@@ -37,7 +36,6 @@ class SanDiskGenerator(object):
         # positive sequences it's randomized.
         np.random.seed(0)  # in order to make sure that we're getting the same seqlens across different runs
         self.seqlen = np.concatenate((neg_seq_lens, pos_seq_lens))
-        end_preprocess2_read = time.time()
         if self.take_last_k_cycles == -1:
             # take each row and convert it from n_cycles*n_features to an array with shape (n_cycles, n_features)
             data_neg = [df_neg.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_neg))]
