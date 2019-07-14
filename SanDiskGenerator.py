@@ -19,6 +19,8 @@ class SanDiskGenerator(object):
         df_neg = neg_dfs[0].append(neg_dfs[1:])
         df_pos = pd.read_csv(glob(os.path.join(self.path, 'non_fails', prefix, 'short' if debug_mode else '.', '*.csv'))
                              [0])
+        df_neg = neg_dfs[0].append(neg_dfs[1:])
+        end_pos_read = time.time()
         df_pos = df_pos.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_neg = df_neg.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
         df_pos = df_pos.fillna(0)  # remove NaN values.
@@ -28,16 +30,34 @@ class SanDiskGenerator(object):
 
         # check where is the first cycle that the prog_status_cyc is '1' (which means failure)...
         df_neg_status_prog = np.array([df_neg['Prog_Status_cyc_{}'.format(i)].values for i in range(1, n_cycles + 1)]).transpose()
+        neg_seq_lens = np.argmax(df_neg_status_prog, axis=1)
+        pos_seq_lens = np.random.randint(low=1, high=n_cycles + 1, size=len(df_pos))
 
-        # generate sequence lengths, for the failed sequences it's computed above and for the 
+        # generate sequence lengths, for the failed sequences it's computed above and for the
         # positive sequences it's randomized.
         np.random.seed(0)  # in order to make sure that we're getting the same seqlens across different runs
-        self.seqlen = np.concatenate((np.argmax(df_neg_status_prog, axis=1),
-                                      np.random.randint(low=1, high=n_cycles + 1, size=len(df_pos))))
-
-        # take each row and convert it from n_cycles*n_features to an array with shape (n_cycles, n_features)
-        data_neg = [df_neg.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_neg))]
-        data_pos = [df_pos.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_pos))]
+        self.seqlen = np.concatenate((neg_seq_lens, pos_seq_lens))
+        end_preprocess2_read = time.time()
+        if self.take_last_k_cycles == -1:
+            # take each row and convert it from n_cycles*n_features to an array with shape (n_cycles, n_features)
+            data_neg = [df_neg.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_neg))]
+            data_pos = [df_pos.iloc[i].values.reshape(n_cycles, n_features) for i in range(len(df_pos))]
+        else:
+            neg_ranges = np.stack((n_features * (neg_seq_lens - take_last_k_cycles), n_features * neg_seq_lens), axis=1)
+            pos_ranges = np.stack((n_features * (pos_seq_lens - take_last_k_cycles), n_features * pos_seq_lens), axis=1)
+            # data_neg = [df_neg.iloc[i].values[neg_ranges[i, 0]: neg_ranges[i, 1]]
+            #                 .reshape(take_last_k_cycles, n_features) for i in range(len(df_neg))]
+            # data_pos = [df_pos.iloc[i].values[pos_ranges[i, 0]: pos_ranges[i, 1]]
+            #                 .reshape(take_last_k_cycles, n_features) for i in range(len(df_pos))]
+            data_neg, data_pos = [], []
+            for i in range(len(df_neg)):
+                if not neg_ranges[i, 0] < 0:
+                    data_neg.append(df_neg.iloc[i].values[neg_ranges[i, 0]: neg_ranges[i, 1]]
+                                    .reshape(take_last_k_cycles, n_features))
+            for i in range(len(df_pos)):
+                if not pos_ranges[i, 0] < 0:
+                    data_pos.append(df_pos.iloc[i].values[pos_ranges[i, 0]: pos_ranges[i, 1]]
+                                    .reshape(take_last_k_cycles, n_features))
 
         # stack the positive and negative exampels and create their labels.
         self.data = np.array(data_neg + data_pos)
@@ -47,7 +67,10 @@ class SanDiskGenerator(object):
         p = np.random.permutation(self.data.shape[0])
         self.data = self.data[p]
         self.labels = self.labels[p]
-        self.seqlen = self.seqlen[p]
+        if self.take_last_k_cycles == -1:
+            self.seqlen = self.seqlen[p]
+        else:
+            self.seqlen = [self.take_last_k_cycles] * len(self.seqlen)
 
         self.batch_id = 0
     
