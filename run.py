@@ -27,6 +27,7 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 # Optional Arguments
 ######################
 parser.add_argument('--display_step', type=int, default=200)
+parser.add_argument('--val_display_step', type=int, default=1000)
 parser.add_argument('--exp_name', type=str, default='unnamed_exp')
 parser.add_argument('--n_computation_dim', type=int, default=0)
 parser.add_argument('--input_model_arch', type=str, default='[]')
@@ -34,6 +35,7 @@ parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
 parser.add_argument("--debug", action="store_true")
+parser.add_argument("--take_last_k_cycles", type=int, default=-1)
 
 
 args = parser.parse_args()
@@ -46,6 +48,7 @@ tf.reset_default_graph()
 ######################
 ARCHITECTURE = args.model
 display_step = args.display_step
+val_display_step = args.val_display_step
 training_steps = args.training_steps
 batch_size = args.batch_size
 n_hidden_dim = args.n_hidden_dim
@@ -97,7 +100,8 @@ elif args.experiment == 'san-disk':
     n_input_dim = 11
     n_output_dim = 2
     data_params = {
-        'debug_mode': args.debug
+        'debug_mode': args.debug,
+        'take_last_k_cycles': args.take_last_k_cycles
     }
     seq_max_len = 50
     use_seqlen = True
@@ -118,10 +122,15 @@ learning_rate_fn = models.create_lr_fn(eval(args.lr_schedule))
 # Common
 ######################
 trainset = DataGenerator(**data_params)
+print('Finished to load train set!')
 testset = DataGenerator(**data_params, train=False)
+print('Finished to load test set!')
 
 # tf Graph input
-x = tf.placeholder(tf.float32, [None, seq_max_len, n_input_dim])
+if args.take_last_k_cycles == -1:
+    x = tf.placeholder(tf.float32, [None, seq_max_len, n_input_dim])
+else:
+    x = tf.placeholder(tf.float32, [None, args.take_last_k_cycles, n_input_dim])
 y = tf.placeholder(tf.float32, [None, n_output_dim])
 # A placeholder for indicating each sequence length
 if use_seqlen:
@@ -141,7 +150,7 @@ if ARCHITECTURE == 'CommRNN':
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn)
 
-    pred = model.build(x, seq_max_len, seqlen)
+    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, seqlen)
     commutative_regularization_term = model.build_reg()
 elif ARCHITECTURE == 'DeepSet':
     model = models.DeepSet(
@@ -149,7 +158,7 @@ elif ARCHITECTURE == 'DeepSet':
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn,
                 aggregation_mode='sum')
-    pred = model.build(x, seq_max_len, seqlen)
+    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, seqlen)
     commutative_regularization_term = None
 else:
     raise Exception("Unkown model, please select 'CommRNN' or 'DeepSet'.")
@@ -207,23 +216,55 @@ with tf.Session() as sess:
         _ = sess.run([train_op], feed_dict=curr_feed_dict)
         if step % display_step == 0 or step == 1:
             # Calculate batch accuracy & loss
-
-            _summary_ops =  sess.run(summary_ops, feed_dict=curr_feed_dict)
-            # _pred, _y = sess.run([tf.round(pred), y], feed_dict=curr_feed_dict)
-            # print('DEBUG pred: {}'.format(_pred))
-            # print('DEBUG y: {}'.format(_y))
-            summary_print = "Step " + str(step) + ", Minibatch Loss=" + \
-                            "{:.6f}".format(_summary_ops[0]) + ", Training Accuracy=" + \
+            _summary_ops = sess.run(summary_ops, feed_dict=curr_feed_dict)
+            summary_print = "Train:    Step " + str(step) + ", Minibatch Loss=" + \
+                            "{:.6f}".format(_summary_ops[0]) + ", Accuracy=" + \
                             "{:.5f}".format(_summary_ops[1]) + \
                             ", learning rate={}".format(learning_rate_fn(step))
 
             if not commutative_regularization_term is None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
-                            
-
             print(summary_print)
-            # for i in range(len(_pred)):
-            #   print('pred {}, target {}, sequence length {}'.format(_pred[i], batch_y[i], batch_seqlen[i]))
+
+        if step % val_display_step == 0:
+            if use_seqlen:
+                val_batch_x, val_batch_y, val_batch_seqlen = testset.next(batch_size)
+                curr_val_feed_dict = {x: val_batch_x,
+                                      y: val_batch_y,
+                                      seqlen: val_batch_seqlen,
+                                      lr: learning_rate_fn(step)}
+            else:
+                val_batch_x, val_batch_y = testset.next(batch_size)
+                curr_val_feed_dict = {x: val_batch_x,
+                                      y: val_batch_y,
+                                      lr: learning_rate_fn(step)}
+
+            _val_summary_ops = sess.run(summary_ops, feed_dict=curr_val_feed_dict)
+            summary_print = "Val:      Step " + str(step) + ", Minibatch Loss=" + \
+                            "{:.6f}".format(_val_summary_ops[0]) + ", Accuracy=" + \
+                            "{:.5f}".format(_val_summary_ops[1]) + \
+                            ", learning rate={}".format(learning_rate_fn(step))
+
+            if not commutative_regularization_term is None:
+                summary_print += ", Regularization Loss=" + "{:.6f}".format(_val_summary_ops[2])
+            print(summary_print)
+
+            # Calculate accuracy
+            if use_seqlen:
+                test_data, test_label, test_seqlen = testset.next()
+                test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
+            else:
+                test_data, test_label = testset.next()
+                test_feed_dict = {x: test_data, y: test_label}
+            print("Testing Accuracy:",
+                  sess.run(accuracy, feed_dict=test_feed_dict))
+            test_pred_scores = sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict)
+            test_pred_labels = np.argmax(test_pred_scores, axis=1)
+            true_labels = np.argmax(test_label, axis=1)
+
+            print_confusion_matrix(true_labels, test_pred_labels)
+            print_normed_confusion_matrix(true_labels, test_pred_labels)
+            print_confusion_matrix_w_thresh(true_labels, test_pred_scores, thresh=0.188)
 
     print("Optimization Finished!")
     save_path = 'models/{}'.format(args.exp_name)
@@ -239,7 +280,6 @@ with tf.Session() as sess:
     else:
         test_data, test_label = testset.next()
         test_feed_dict = {x: test_data, y: test_label}
-    # test_seqlen = testset.seqlen
     print("Testing Accuracy:",
         sess.run(accuracy, feed_dict=test_feed_dict))
     test_pred_scores = sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict)
