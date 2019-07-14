@@ -36,7 +36,7 @@ def to_onehot(arr, vec_len):
     return res
 
 class PointCloudGenerator(object):
-    def __init__(self, fname='../PointClouds/ModelNet40_cloud.h5', down_sample=100, do_standardize=True, do_augmentation=True, train=True):
+    def __init__(self, fname='../DeepSets/PointClouds/ModelNet40_cloud_from_edo.h5', down_sample=100, do_standardize=True, do_augmentation=True, train=True):
 
         self.fname = fname
         self.down_sample = down_sample
@@ -105,7 +105,7 @@ class PointCloudGenerator(object):
 
 
 if __name__=='__main__':
-    sample = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5', down_sample=1000)
+    sample = PointCloudGenerator('data/PointClouds/ModelNet40_cloud.h5', down_sample=1000)
     # sample_test = PointCloudGenerator('../PointClouds/ModelNet40_cloud.h5', mode='test')
     # print(sample.next(2)[1].shape)
     print(sample.data.shape)

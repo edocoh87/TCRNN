@@ -30,7 +30,7 @@ parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
-
+parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum')
 
 args = parser.parse_args()
 
@@ -124,8 +124,8 @@ else:
     seqlen = None
 lr = tf.placeholder(tf.float32, [])
 
-input_model_fn = models.create_model_fn(arch=input_model_arch, activation=tf.nn.tanh)
-output_model_fn = models.create_model_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True)
+input_model_fn = models.create_model_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=False)
+output_model_fn = models.create_model_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout=False)
 
 if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
@@ -142,7 +142,7 @@ elif ARCHITECTURE == 'DeepSet':
                 input_dim=n_input_dim,
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn,
-                aggregation_mode='sum')
+                aggregation_mode=args.aggregation_mode)
     pred = model.build(x, seq_max_len, seqlen)
     commutative_regularization_term = None
 else:
@@ -222,10 +222,10 @@ with tf.Session() as sess:
 
     # Calculate accuracy
     if use_seqlen:
-        test_data, test_label, test_seqlen = trainset.next()
+        test_data, test_label, test_seqlen = testset.next()
         test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
     else:
-        test_data, test_label = trainset.next()
+        test_data, test_label = testset.next()
         test_feed_dict = {x: test_data, y: test_label}
     # test_seqlen = testset.seqlen
     print("Testing Accuracy:", \

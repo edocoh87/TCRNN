@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from functools import partial
 
@@ -14,21 +15,27 @@ def create_lr_fn(schedule):
     return lr_fn
 
 def glorot_init(shape):
-    return tf.truncated_normal(shape=shape, stddev=1. / tf.sqrt(shape[0] / 2.))
+    return tf.truncated_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
 
 linear_activation = lambda x: x
 
 
 
-def create_model_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False):
+def create_model_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False, reduce_max=False, dropout=False):
     weights = dict(
                 [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
     )
     biases = dict(
-                [('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
+                #[('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
+                [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
     )
     def _input_fn(x):
         for i in range(len(arch)-1):
+            if reduce_max:
+                xm = tf.reduce_max(x, axis=1, keepdims=True)
+                x -= xm
+            if dropout:
+                x = tf.nn.dropout(x, tf.constant(0.5))
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
             # wheather the last layer is linear or not.
             curr_acivation = linear_activation if \
