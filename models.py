@@ -19,9 +19,32 @@ def glorot_init(shape):
 
 linear_activation = lambda x: x
 
+def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False):
+    weights = dict(
+                [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
+    )
+    biases = dict(
+                #[('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
+                [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
+    )
+    def _input_fn(x):
+        btch, set_size, input_dim = x.get_shape().as_list()
+        for i in range(len(arch)-1):
+            if reduce_max:
+                print('shape: ', [-1, set_size, arch[i]])
+                x = tf.reshape(x, [-1, set_size, arch[i]])
+                xm = tf.reduce_max(x, axis=1, keepdims=True)
+                x -= xm
+            x = tf.reshape(x, [-1, arch[i]])
+            if dropout:
+                x = tf.nn.dropout(x, tf.constant(0.5))
+            x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
+            x = activation(x)
+        return x
 
+    return _input_fn
 
-def create_model_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False, reduce_max=False, dropout=False):
+def create_output_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False, dropout=False):
     weights = dict(
                 [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
     )
@@ -31,9 +54,6 @@ def create_model_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=F
     )
     def _input_fn(x):
         for i in range(len(arch)-1):
-            if reduce_max:
-                xm = tf.reduce_max(x, axis=1, keepdims=True)
-                x -= xm
             if dropout:
                 x = tf.nn.dropout(x, tf.constant(0.5))
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
@@ -163,7 +183,7 @@ class DeepSet(object):
     def build(self, x, seq_max_len, seqlen=None):
         # stack the sequence and batch into one axis to create a matrix [batch_size*n_steps, input_dim]
         pre_shp = tf.shape(x)
-        x = tf.reshape(x, [-1, self.input_dim])
+        # x = tf.reshape(x, [-1, self.input_dim])
         x = self.input_model_fn(x)
         post_shp = tf.shape(x)
         

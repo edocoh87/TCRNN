@@ -124,8 +124,8 @@ else:
     seqlen = None
 lr = tf.placeholder(tf.float32, [])
 
-input_model_fn = models.create_model_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=False)
-output_model_fn = models.create_model_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout=False)
+input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True)
+output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout=True)
 
 if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
@@ -212,8 +212,7 @@ with tf.Session() as sess:
 
             if not commutative_regularization_term is None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
-                            
-
+            
             print(summary_print)
             # for i in range(len(_pred)):
             #   print('pred {}, target {}, sequence length {}'.format(_pred[i], batch_y[i], batch_seqlen[i]))
