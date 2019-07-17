@@ -50,3 +50,37 @@ def print_confusion_matrix_w_thresh(true_labels, pred_scores, thresh, thresh_typ
         print('Normalized confusion matrix with fnr rate = {}'.format(thresh))
         print_normed_confusion_matrix(true_labels, pred_labels)
 
+
+def preprocess_batch(df, n_features, take_last_k_cycles=-1):
+    df = (df.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
+          .fillna(0)
+          )
+    n_cycles = int(len(df.columns) / n_features)
+    batch_size = len(df)
+    prog_status = np.array([df['Prog_Status_cyc_{}'.format(i)].values for i in range(1, n_cycles + 1)])
+    first_fail_cycle = np.argmax(prog_status, axis=0)
+    labels = (first_fail_cycle > 0).astype(np.int32)
+    last_input_cycle = np.random.randint(low=1 if take_last_k_cycles == -1 else take_last_k_cycles, high=n_cycles,
+                                         size=labels.shape[0])
+    last_input_cycle = np.where(labels == 0, last_input_cycle, first_fail_cycle)
+    if take_last_k_cycles == -1:
+        data = df.values.reshape(batch_size, n_cycles, n_features)
+    else:
+        data_arr = []
+        for i in range(batch_size):
+            data_arr.append(df.iloc[i].values[(last_input_cycle[i] - take_last_k_cycles) * n_features:
+                                              last_input_cycle[i] * n_features])
+        data = np.stack([x.reshape(take_last_k_cycles, n_features) for x in data_arr])
+        last_input_cycle = [take_last_k_cycles] * batch_size
+    labels = np.stack([(labels == 0).astype(np.int32), (labels == 1).astype(np.int32)]).transpose()
+    return data, labels, last_input_cycle
+
+def filter_short_strings(data, n_features, take_last_k_cycles):
+    # filter out strings that fail on cycle < take_last_k_cycles
+    n_cycles = int(len(data.columns) / n_features)
+    prog_status = np.array(
+        [data['Prog_Status_cyc_{}'.format(i)].values for i in range(1, n_cycles + 1)])
+    first_fail_cycle = np.argmax(prog_status, axis=0)
+    labels = (first_fail_cycle > 0).astype(np.int32)
+    data = data[(labels == 0) | (first_fail_cycle > take_last_k_cycles)]
+    return data

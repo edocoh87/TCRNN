@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 import argparse
 from pdb import set_trace as trace
+from glob import glob
+import multiprocessing
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
@@ -10,6 +12,8 @@ from SanDiskGenerator import SanDiskGenerator
 
 import models
 from utils import *
+from worker import PreProcessWorker
+from debug_thread_worker import ThreadPreProcessWorker
 
 ######################
 # Required Arguments
@@ -35,7 +39,9 @@ parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
 parser.add_argument("--debug", action="store_true")
+parser.add_argument("--num_val_samples", type=int, default=10000)
 parser.add_argument("--take_last_k_cycles", type=int, default=-1)
+parser.add_argument("--oversample_pos", action="store_true")
 
 
 args = parser.parse_args()
@@ -53,6 +59,11 @@ training_steps = args.training_steps
 batch_size = args.batch_size
 n_hidden_dim = args.n_hidden_dim
 
+pos_files_path = lambda dataset: '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/all_fails_{0}.csv'.format(dataset)
+if args.debug:
+    my_worker = ThreadPreProcessWorker
+else:
+    my_worker = PreProcessWorker
 
 if args.experiment == 'pnt-cld':
     DataGenerator = PointCloudGenerator
@@ -96,6 +107,42 @@ elif args.experiment in ['dgt-max', 'dgt-sum', 'dgt-prty']:
     num_test_examples = 500
 
 elif args.experiment == 'san-disk':
+    FILES_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
+    n_features = 11
+    train_files = glob(FILES_PATH + 'train/DUT*/*.csv')
+    val_files = glob(FILES_PATH + 'val/DUT*/*.csv')
+
+    # Start queue
+    train_batches_queue = multiprocessing.Queue(maxsize=10)
+    val_batches_queue = multiprocessing.Queue(maxsize=10)
+
+    # Start workers
+    train_workers = []
+    val_workers = []
+    num_workers = 1 if args.debug else 8
+    for worker_num in range(num_workers):
+        first_file_idx = int(worker_num * len(train_files) / num_workers)
+        last_file_idx = int((worker_num + 1) * len(train_files) / num_workers)
+        curr_worker = my_worker(queue=train_batches_queue,
+                                batch_size=args.batch_size,
+                                files=train_files[first_file_idx: last_file_idx],
+                                n_features=n_features,
+                                pos_file=pos_files_path('train') if args.oversample_pos else None,
+                                take_last_k_cycles=args.take_last_k_cycles)
+        train_workers.append(curr_worker)
+    for worker_num in range(num_workers):
+        first_file_idx = int(worker_num * len(val_files) / num_workers)
+        last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
+        curr_worker = my_worker(queue=val_batches_queue,
+                                batch_size=args.batch_size,
+                                files=val_files[first_file_idx: last_file_idx],
+                                n_features=n_features,
+                                take_last_k_cycles=args.take_last_k_cycles)
+        val_workers.append(curr_worker)
+
+    for worker in train_workers + val_workers:
+        worker.start()
+
     DataGenerator = SanDiskGenerator
     n_input_dim = 11
     n_output_dim = 2
@@ -121,11 +168,6 @@ learning_rate_fn = models.create_lr_fn(eval(args.lr_schedule))
 ######################
 # Common
 ######################
-trainset = DataGenerator(**data_params)
-print('Finished to load train set!')
-testset = DataGenerator(**data_params, train=False)
-print('Finished to load test set!')
-
 # tf Graph input
 if args.take_last_k_cycles == -1:
     x = tf.placeholder(tf.float32, [None, seq_max_len, n_input_dim])
@@ -198,15 +240,14 @@ with tf.Session() as sess:
     sess.run(init)
     training_results = []
     for step in range(1, training_steps + 1):
-        # batch_x, batch_y, batch_seqlen = trainset.next(batch_size)
         if use_seqlen:
-            batch_x, batch_y, batch_seqlen = trainset.next(batch_size)
+            batch_x, batch_y, batch_seqlen = train_batches_queue.get()
             curr_feed_dict = {x: batch_x,
                               y: batch_y,
                               seqlen: batch_seqlen,
                               lr: learning_rate_fn(step)}
         else:
-            batch_x, batch_y = trainset.next(batch_size)
+            batch_x, batch_y, batch_seqlen = train_batches_queue.get()
             curr_feed_dict = {x: batch_x,
                               y: batch_y,
                               lr: learning_rate_fn(step)}
@@ -228,13 +269,13 @@ with tf.Session() as sess:
 
         if step % val_display_step == 0:
             if use_seqlen:
-                val_batch_x, val_batch_y, val_batch_seqlen = testset.next(batch_size)
+                val_batch_x, val_batch_y, val_batch_seqlen = val_batches_queue.get(batch_size)
                 curr_val_feed_dict = {x: val_batch_x,
                                       y: val_batch_y,
                                       seqlen: val_batch_seqlen,
                                       lr: learning_rate_fn(step)}
             else:
-                val_batch_x, val_batch_y = testset.next(batch_size)
+                val_batch_x, val_batch_y = val_batches_queue.get(batch_size)
                 curr_val_feed_dict = {x: val_batch_x,
                                       y: val_batch_y,
                                       lr: learning_rate_fn(step)}
@@ -251,10 +292,10 @@ with tf.Session() as sess:
 
             # Calculate accuracy
             if use_seqlen:
-                test_data, test_label, test_seqlen = testset.next()
+                test_data, test_label, test_seqlen = val_batches_queue.get()
                 test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
             else:
-                test_data, test_label = testset.next()
+                test_data, test_label = val_batches_queue.get()
                 test_feed_dict = {x: test_data, y: test_label}
             print("Testing Accuracy:",
                   sess.run(accuracy, feed_dict=test_feed_dict))
@@ -274,22 +315,30 @@ with tf.Session() as sess:
     print("Saved model to file: {}".format(ckpt_save_path))
 
     # Calculate accuracy
-    if use_seqlen:
-        test_data, test_label, test_seqlen = testset.next()
-        test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
-    else:
-        test_data, test_label = testset.next()
-        test_feed_dict = {x: test_data, y: test_label}
-    print("Testing Accuracy:",
-        sess.run(accuracy, feed_dict=test_feed_dict))
-    test_pred_scores = sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict)
-    test_pred_labels = np.argmax(test_pred_scores, axis=1)
-    true_labels = np.argmax(test_label, axis=1)
+    num_classified_val_examples = 0
+    val_pred_scores_list = []
+    val_pred_labels_list = []
+    val_true_scores_list = []
+    while num_classified_val_examples < args.num_val_samples:
+        if use_seqlen:
+            test_data, test_label, test_seqlen = val_batches_queue.get()
+            test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
+        else:
+            test_data, test_label = val_batches_queue.get()
+            test_feed_dict = {x: test_data, y: test_label}
 
-    print_confusion_matrix(true_labels, test_pred_labels)
-    print_normed_confusion_matrix(true_labels, test_pred_labels)
-    plot_roc_curve(true_labels, test_pred_scores, save_path)
-    print_confusion_matrix_w_thresh(true_labels, test_pred_scores, thresh=0.188)
+        val_pred_scores_list.append(sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict))
+        val_pred_labels_list.append(np.argmax(val_pred_scores_list[-1], axis=1))
+        val_true_scores_list.append(np.argmax(test_label, axis=1))
+        num_classified_val_examples += len(test_label)
+
+    val_pred_scores = np.concatenate(val_pred_scores_list)
+    val_pred_labels = np.concatenate(val_pred_labels_list)
+    val_true_labels = np.concatenate(val_true_scores_list)
+    print_confusion_matrix(val_true_labels, val_pred_labels)
+    print_normed_confusion_matrix(val_true_labels, val_pred_labels)
+    plot_roc_curve(val_true_labels, val_pred_scores, save_path)
+    print_confusion_matrix_w_thresh(val_true_labels, val_pred_scores, thresh=0.188)
 
     if eval_on_varying_seq:
         for curr_seq_len in test_sequences:
