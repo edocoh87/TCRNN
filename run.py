@@ -14,6 +14,7 @@ import models
 from utils import *
 from worker import PreProcessWorker
 from debug_thread_worker import ThreadPreProcessWorker
+from SDFeedDictGenerator import FeedDictGenerator
 
 ######################
 # Required Arguments
@@ -130,15 +131,17 @@ elif args.experiment == 'san-disk':
                                 pos_file=pos_files_path('train') if args.oversample_pos else None,
                                 take_last_k_cycles=args.take_last_k_cycles)
         train_workers.append(curr_worker)
-    for worker_num in range(num_workers):
-        first_file_idx = int(worker_num * len(val_files) / num_workers)
-        last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
-        curr_worker = my_worker(queue=val_batches_queue,
-                                batch_size=args.batch_size,
-                                files=val_files[first_file_idx: last_file_idx],
-                                n_features=n_features,
-                                take_last_k_cycles=args.take_last_k_cycles)
-        val_workers.append(curr_worker)
+    if not args.debug:
+        for worker_num in range(num_workers):
+            first_file_idx = int(worker_num * len(val_files) / num_workers)
+            last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
+            curr_worker = my_worker(queue=val_batches_queue,
+                                    batch_size=args.batch_size,
+                                    files=val_files[first_file_idx: last_file_idx],
+                                    n_features=n_features,
+                                    pos_file=pos_files_path('val') if args.oversample_pos else None,
+                                    take_last_k_cycles=args.take_last_k_cycles)
+            val_workers.append(curr_worker)
 
     for worker in train_workers + val_workers:
         worker.start()
@@ -174,12 +177,13 @@ if args.take_last_k_cycles == -1:
 else:
     x = tf.placeholder(tf.float32, [None, args.take_last_k_cycles, n_input_dim])
 y = tf.placeholder(tf.float32, [None, n_output_dim])
+lr = tf.placeholder(tf.float32, [])
 # A placeholder for indicating each sequence length
+seqlen = None
 if use_seqlen:
     seqlen = tf.placeholder(tf.int32, [None])
-else:
-    seqlen = None
-lr = tf.placeholder(tf.float32, [])
+
+placeholders = (x, y, lr, seqlen)
 
 input_model_fn = models.create_model_fn(arch=input_model_arch, activation=tf.nn.tanh)
 output_model_fn = models.create_model_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True)
@@ -205,6 +209,7 @@ elif ARCHITECTURE == 'DeepSet':
 else:
     raise Exception("Unkown model, please select 'CommRNN' or 'DeepSet'.")
 
+with_reg_loss = commutative_regularization_term is not None
 
 if n_output_dim == 1:
     loss = tf.losses.mean_squared_error(labels=y, predictions=pred)
@@ -233,6 +238,9 @@ if not commutative_regularization_term is None:
 init = tf.global_variables_initializer()
 saver = tf.train.Saver()
 
+TrainGenerator = FeedDictGenerator(train_batches_queue, placeholders, use_seqlen, learning_rate_fn, 'Train')
+ValGenerator = FeedDictGenerator(val_batches_queue, placeholders, use_seqlen, learning_rate_fn, 'Val')
+
 # Start training
 with tf.Session() as sess:
 
@@ -240,105 +248,39 @@ with tf.Session() as sess:
     sess.run(init)
     training_results = []
     for step in range(1, training_steps + 1):
-        if use_seqlen:
-            batch_x, batch_y, batch_seqlen = train_batches_queue.get()
-            curr_feed_dict = {x: batch_x,
-                              y: batch_y,
-                              seqlen: batch_seqlen,
-                              lr: learning_rate_fn(step)}
-        else:
-            batch_x, batch_y, batch_seqlen = train_batches_queue.get()
-            curr_feed_dict = {x: batch_x,
-                              y: batch_y,
-                              lr: learning_rate_fn(step)}
-
-        
+        curr_feed_dict = TrainGenerator.create_feed_dict()
         # Run optimization op (backprop)
         _ = sess.run([train_op], feed_dict=curr_feed_dict)
         if step % display_step == 0 or step == 1:
             # Calculate batch accuracy & loss
-            _summary_ops = sess.run(summary_ops, feed_dict=curr_feed_dict)
-            summary_print = "Train:    Step " + str(step) + ", Minibatch Loss=" + \
-                            "{:.6f}".format(_summary_ops[0]) + ", Accuracy=" + \
-                            "{:.5f}".format(_summary_ops[1]) + \
-                            ", learning rate={}".format(learning_rate_fn(step))
-
-            if not commutative_regularization_term is None:
-                summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
-            print(summary_print)
-
+            print_stats_from_feeddict(sess, (summary_ops, ), curr_feed_dict, with_reg_loss, curr_feed_dict[y], step)
         if step % val_display_step == 0:
-            if use_seqlen:
-                val_batch_x, val_batch_y, val_batch_seqlen = val_batches_queue.get(batch_size)
-                curr_val_feed_dict = {x: val_batch_x,
-                                      y: val_batch_y,
-                                      seqlen: val_batch_seqlen,
-                                      lr: learning_rate_fn(step)}
-            else:
-                val_batch_x, val_batch_y = val_batches_queue.get(batch_size)
-                curr_val_feed_dict = {x: val_batch_x,
-                                      y: val_batch_y,
-                                      lr: learning_rate_fn(step)}
-
-            _val_summary_ops = sess.run(summary_ops, feed_dict=curr_val_feed_dict)
-            summary_print = "Val:      Step " + str(step) + ", Minibatch Loss=" + \
-                            "{:.6f}".format(_val_summary_ops[0]) + ", Accuracy=" + \
-                            "{:.5f}".format(_val_summary_ops[1]) + \
-                            ", learning rate={}".format(learning_rate_fn(step))
-
-            if not commutative_regularization_term is None:
-                summary_print += ", Regularization Loss=" + "{:.6f}".format(_val_summary_ops[2])
-            print(summary_print)
-
-            # Calculate accuracy
-            if use_seqlen:
-                test_data, test_label, test_seqlen = val_batches_queue.get()
-                test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
-            else:
-                test_data, test_label = val_batches_queue.get()
-                test_feed_dict = {x: test_data, y: test_label}
-            print("Testing Accuracy:",
-                  sess.run(accuracy, feed_dict=test_feed_dict))
-            test_pred_scores = sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict)
-            test_pred_labels = np.argmax(test_pred_scores, axis=1)
-            true_labels = np.argmax(test_label, axis=1)
-
-            print_confusion_matrix(true_labels, test_pred_labels)
-            print_normed_confusion_matrix(true_labels, test_pred_labels)
-            print_confusion_matrix_w_thresh(true_labels, test_pred_scores, thresh=0.188)
+            print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, ValGenerator, 1000, step)
 
     print("Optimization Finished!")
     save_path = 'models/{}'.format(args.exp_name)
     os.makedirs(save_path, exist_ok=True)
     ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
-
     print("Saved model to file: {}".format(ckpt_save_path))
 
-    # Calculate accuracy
-    num_classified_val_examples = 0
-    val_pred_scores_list = []
-    val_pred_labels_list = []
-    val_true_scores_list = []
-    while num_classified_val_examples < args.num_val_samples:
-        if use_seqlen:
-            test_data, test_label, test_seqlen = val_batches_queue.get()
-            test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
-        else:
-            test_data, test_label = val_batches_queue.get()
-            test_feed_dict = {x: test_data, y: test_label}
+    final_val_batches_queue = multiprocessing.Queue(maxsize=10)
+    final_val_workers = []
+    for worker_num in range(num_workers):
+        first_file_idx = int(worker_num * len(val_files) / num_workers)
+        last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
+        curr_worker = my_worker(queue=final_val_batches_queue,
+                                batch_size=args.batch_size,
+                                files=val_files[first_file_idx: last_file_idx],
+                                n_features=n_features,
+                                pos_file=pos_files_path('val') if args.oversample_pos and worker_num == 0 else None,
+                                take_last_k_cycles=args.take_last_k_cycles,
+                                pos_replacement=False,
+                                filter_pos=True)
+        final_val_workers.append(curr_worker)
+        curr_worker.start()
 
-        val_pred_scores_list.append(sess.run(tf.nn.softmax(pred, axis=-1), feed_dict=test_feed_dict))
-        val_pred_labels_list.append(np.argmax(val_pred_scores_list[-1], axis=1))
-        val_true_scores_list.append(np.argmax(test_label, axis=1))
-        num_classified_val_examples += len(test_label)
-
-    val_pred_scores = np.concatenate(val_pred_scores_list)
-    val_pred_labels = np.concatenate(val_pred_labels_list)
-    val_true_labels = np.concatenate(val_true_scores_list)
-    print_confusion_matrix(val_true_labels, val_pred_labels)
-    print_normed_confusion_matrix(val_true_labels, val_pred_labels)
-    plot_roc_curve(val_true_labels, val_pred_scores, save_path)
-    print_confusion_matrix_w_thresh(val_true_labels, val_pred_scores, thresh=0.188)
+    FinalValGenerator = FeedDictGenerator(final_val_batches_queue, placeholders, use_seqlen, lambda x: 0, 'FinalVal')
+    print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, FinalValGenerator, 1000000, 0)
 
     if eval_on_varying_seq:
         for curr_seq_len in test_sequences:
