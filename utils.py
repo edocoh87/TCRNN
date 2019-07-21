@@ -66,7 +66,7 @@ def one_hot(label, num_categories):
     return result
 
 
-def preprocess_batch(df, n_features, take_last_k_cycles=-1, use_string_loc=True):
+def preprocess_batch(df, n_features, take_last_k_cycles, use_string_loc, concat_all_cycles):
     if use_string_loc:
         loc_vectors = []
         for field, num_field_categories in zip(['BLK', 'WL', 'Str'], [11825, 64, 4]):
@@ -95,6 +95,8 @@ def preprocess_batch(df, n_features, take_last_k_cycles=-1, use_string_loc=True)
                                               last_input_cycle[i] * n_features])
         data = np.stack([x.reshape(take_last_k_cycles, n_features) for x in data_arr])
         last_input_cycle = [take_last_k_cycles] * batch_size
+    if concat_all_cycles:
+        data = np.expand_dims(data.reshape((data.shape[0], -1)), axis=1)
     if use_string_loc:
         stacked_locs = np.dstack([loc_data] * data.shape[1]).transpose((0, 2, 1))
         data = np.concatenate((data, stacked_locs), axis=2)

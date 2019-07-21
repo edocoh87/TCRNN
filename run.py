@@ -43,6 +43,7 @@ parser.add_argument("--num_val_samples", type=int, default=10000)
 parser.add_argument("--take_last_k_cycles", type=int, default=-1)
 parser.add_argument("--oversample_pos", action="store_true")
 parser.add_argument("--ignore_string_loc", action="store_true")
+parser.add_argument("--concat_all_cycles", action="store_true")
 
 args = parser.parse_args()
 

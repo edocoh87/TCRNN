@@ -12,8 +12,8 @@ import multiprocessing
 POS_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
 
 class BaseWorker(object):
-    def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
-                 pos_replacement=True, filter_pos=False, use_string_loc=True):
+    def __init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+                 pos_replacement, filter_pos, use_string_loc, concat_all_cycles):
         self.queue = queue
         self.batches_count = 0
         self.last_index = 0
@@ -32,6 +32,7 @@ class BaseWorker(object):
         self.pos_replacement = pos_replacement
         self.filter_pos = filter_pos
         self.use_string_loc = use_string_loc
+        self.concat_all_cycles = concat_all_cycles
 
     def load_batch(self):
         if not self.pos_replacement and self.pos_df is not None:
@@ -54,7 +55,8 @@ class BaseWorker(object):
         else:
             batch = self.data.iloc[:self.batch_size]
             self.data = self.data.iloc[self.batch_size:]
-        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles, self.use_string_loc)
+        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles, self.use_string_loc,
+                                              self.concat_all_cycles)
         return preprocessed_batch
 
     def run(self):
@@ -64,15 +66,15 @@ class BaseWorker(object):
 
 class ProcessWorker(BaseWorker, multiprocessing.Process):
     def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
-                 pos_replacement=True, filter_pos=False, use_string_loc=True):
+                 pos_replacement=True, filter_pos=False, use_string_loc=True, concat_all_cycles=False):
         BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
-                 pos_replacement, filter_pos, use_string_loc)
+                 pos_replacement, filter_pos, use_string_loc, concat_all_cycles)
         multiprocessing.Process.__init__(self, daemon=True)
 
 
 class ThreadWorker(BaseWorker, threading.Thread):
     def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
-                 pos_replacement=True, filter_pos=False, use_string_loc=True):
+                 pos_replacement=True, filter_pos=False, use_string_loc=True, concat_all_cycles=False):
         BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
-                 pos_replacement, filter_pos, use_string_loc)
+                 pos_replacement, filter_pos, use_string_loc, concat_all_cycles)
         threading.Thread.__init__(self, daemon=True)
