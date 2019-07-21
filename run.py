@@ -4,8 +4,6 @@ import argparse
 from pdb import set_trace as trace
 from glob import glob
 import multiprocessing
-import gc
-import time
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
@@ -14,8 +12,7 @@ from SanDiskGenerator import SanDiskGenerator
 
 import models
 from utils import *
-from worker import PreProcessWorker
-from debug_thread_worker import ThreadPreProcessWorker
+from worker import ProcessWorker, ThreadWorker
 from SDFeedDictGenerator import FeedDictGenerator
 
 ######################
@@ -64,9 +61,9 @@ n_hidden_dim = args.n_hidden_dim
 
 pos_files_path = lambda dataset: '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/all_fails_{0}.csv'.format(dataset)
 if args.debug:
-    my_worker = ThreadPreProcessWorker
+    my_worker = ThreadWorker
 else:
-    my_worker = PreProcessWorker
+    my_worker = ProcessWorker
 
 if args.experiment == 'pnt-cld':
     DataGenerator = PointCloudGenerator

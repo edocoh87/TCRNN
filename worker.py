@@ -11,10 +11,9 @@ import multiprocessing
 
 POS_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
 
-class PreProcessWorker(multiprocessing.Process):
+class BaseWorker(object):
     def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
                  pos_replacement=True, filter_pos=False, use_string_loc=True):
-        multiprocessing.Process.__init__(self, daemon=True)
         self.queue = queue
         self.batches_count = 0
         self.last_index = 0
@@ -61,3 +60,19 @@ class PreProcessWorker(multiprocessing.Process):
     def run(self):
         while not self.is_finished:
             self.queue.put(self.load_batch())
+
+
+class ProcessWorker(BaseWorker, multiprocessing.Process):
+    def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
+                 pos_replacement=True, filter_pos=False, use_string_loc=True):
+        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+                 pos_replacement, filter_pos, use_string_loc)
+        multiprocessing.Process.__init__(self, daemon=True)
+
+
+class ThreadWorker(BaseWorker, threading.Thread):
+    def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
+                 pos_replacement=True, filter_pos=False, use_string_loc=True):
+        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+                 pos_replacement, filter_pos, use_string_loc)
+        threading.Thread.__init__(self, daemon=True)
