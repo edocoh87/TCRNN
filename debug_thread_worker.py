@@ -13,7 +13,7 @@ POS_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
 
 class ThreadPreProcessWorker(threading.Thread):
     def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
-        pos_replacement=True, filter_pos=False):
+        pos_replacement=True, filter_pos=False, use_string_loc=True):
         threading.Thread.__init__(self, daemon=True)
         self.queue = queue
         self.batches_count = 0
@@ -32,13 +32,14 @@ class ThreadPreProcessWorker(threading.Thread):
         self.neg_percentage = neg_percentage
         self.pos_replacement = pos_replacement
         self.filter_pos = filter_pos
+        self.use_string_loc = use_string_loc
 
     def load_batch(self):
         if not self.pos_replacement and self.pos_df is not None:
             self.data = self.pos_df
             self.pos_df = None
         while len(self.data) < self.batch_size and self.last_index < len(self.permutation):
-            new_data = (pd.read_csv(self.files[self.permutation[self.last_index]], index_col=False))
+            new_data = pd.read_csv(self.files[self.permutation[self.last_index]], index_col=False)
             self.last_index += 1
             if self.filter_pos:
                 new_data = new_data[new_data['Prog_Status_cyc_50'] == 0]
@@ -54,7 +55,7 @@ class ThreadPreProcessWorker(threading.Thread):
         else:
             batch = self.data.iloc[:self.batch_size]
             self.data = self.data.iloc[self.batch_size:]
-        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles)
+        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles, self.use_string_loc)
         return preprocessed_batch
 
     def run(self):

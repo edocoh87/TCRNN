@@ -54,7 +54,24 @@ def print_confusion_matrix_w_thresh(true_labels, pred_scores, thresh, thresh_typ
         print_normed_confusion_matrix(true_labels, pred_labels)
 
 
-def preprocess_batch(df, n_features, take_last_k_cycles=-1):
+def one_hot(label, num_categories):
+    if isinstance(label, list) or isinstance(label, np.ndarray):
+        labels = label.astype(np.int32).tolist()
+        result = np.zeros((len(labels), num_categories))
+        for label_idx, curr_label in enumerate(labels):
+            result[label_idx, curr_label] = 1
+    else:
+        result = np.zeros((num_categories, ))
+        result[label] = 1
+    return result
+
+
+def preprocess_batch(df, n_features, take_last_k_cycles=-1, use_string_loc=True):
+    if use_string_loc:
+        loc_vectors = []
+        for field, num_field_categories in zip(['BLK', 'WL', 'Str'], [11825, 64, 4]):
+            loc_vectors.append(one_hot(df[field].values, num_field_categories))
+        loc_data = np.concatenate(loc_vectors, axis=1)
     df = (df.drop(columns=['PC', 'DUT', 'Bank', 'BLK', 'WL', 'Str'])
           .fillna(0)
           )
@@ -78,6 +95,9 @@ def preprocess_batch(df, n_features, take_last_k_cycles=-1):
                                               last_input_cycle[i] * n_features])
         data = np.stack([x.reshape(take_last_k_cycles, n_features) for x in data_arr])
         last_input_cycle = [take_last_k_cycles] * batch_size
+    if use_string_loc:
+        stacked_locs = np.dstack([loc_data] * data.shape[1]).transpose((0, 2, 1))
+        data = np.concatenate((data, stacked_locs), axis=2)
     labels = np.stack([(labels == 0).astype(np.int32), (labels == 1).astype(np.int32)]).transpose()
     return data, labels, last_input_cycle
 

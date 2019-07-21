@@ -13,7 +13,7 @@ POS_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
 
 class PreProcessWorker(multiprocessing.Process):
     def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
-                 pos_replacement=True, filter_pos=False):
+                 pos_replacement=True, filter_pos=False, use_string_loc=True):
         multiprocessing.Process.__init__(self, daemon=True)
         self.queue = queue
         self.batches_count = 0
@@ -32,6 +32,7 @@ class PreProcessWorker(multiprocessing.Process):
         self.neg_percentage = neg_percentage
         self.pos_replacement = pos_replacement
         self.filter_pos = filter_pos
+        self.use_string_loc = use_string_loc
 
     def load_batch(self):
         if not self.pos_replacement and self.pos_df is not None:
@@ -54,7 +55,7 @@ class PreProcessWorker(multiprocessing.Process):
         else:
             batch = self.data.iloc[:self.batch_size]
             self.data = self.data.iloc[self.batch_size:]
-        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles)
+        preprocessed_batch = preprocess_batch(batch, self.n_features, self.take_last_k_cycles, self.use_string_loc)
         return preprocessed_batch
 
     def run(self):

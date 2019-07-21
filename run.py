@@ -4,6 +4,8 @@ import argparse
 from pdb import set_trace as trace
 from glob import glob
 import multiprocessing
+import gc
+import time
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
@@ -43,7 +45,7 @@ parser.add_argument("--debug", action="store_true")
 parser.add_argument("--num_val_samples", type=int, default=10000)
 parser.add_argument("--take_last_k_cycles", type=int, default=-1)
 parser.add_argument("--oversample_pos", action="store_true")
-
+parser.add_argument("--ignore_string_loc", action="store_true")
 
 args = parser.parse_args()
 
@@ -129,7 +131,8 @@ elif args.experiment == 'san-disk':
                                 files=train_files[first_file_idx: last_file_idx],
                                 n_features=n_features,
                                 pos_file=pos_files_path('train') if args.oversample_pos else None,
-                                take_last_k_cycles=args.take_last_k_cycles)
+                                take_last_k_cycles=args.take_last_k_cycles,
+                                use_string_loc=not args.ignore_string_loc)
         train_workers.append(curr_worker)
     if not args.debug:
         for worker_num in range(num_workers):
@@ -140,7 +143,8 @@ elif args.experiment == 'san-disk':
                                     files=val_files[first_file_idx: last_file_idx],
                                     n_features=n_features,
                                     pos_file=pos_files_path('val') if args.oversample_pos else None,
-                                    take_last_k_cycles=args.take_last_k_cycles)
+                                    take_last_k_cycles=args.take_last_k_cycles,
+                                    use_string_loc=not args.ignore_string_loc)
             val_workers.append(curr_worker)
 
     for worker in train_workers + val_workers:
@@ -148,6 +152,8 @@ elif args.experiment == 'san-disk':
 
     DataGenerator = SanDiskGenerator
     n_input_dim = 11
+    if not args.ignore_string_loc:
+        n_input_dim += 11893
     n_output_dim = 2
     data_params = {
         'debug_mode': args.debug,
@@ -243,7 +249,6 @@ ValGenerator = FeedDictGenerator(val_batches_queue, placeholders, use_seqlen, le
 
 # Start training
 with tf.Session() as sess:
-
     # Run the initializer
     sess.run(init)
     training_results = []
@@ -263,6 +268,11 @@ with tf.Session() as sess:
     ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
     print("Saved model to file: {}".format(ckpt_save_path))
 
+    for worker in train_workers + val_workers:
+        worker.terminate()
+    del val_batches_queue
+    del train_batches_queue
+
     final_val_batches_queue = multiprocessing.Queue(maxsize=10)
     final_val_workers = []
     for worker_num in range(num_workers):
@@ -275,7 +285,8 @@ with tf.Session() as sess:
                                 pos_file=pos_files_path('val') if args.oversample_pos and worker_num == 0 else None,
                                 take_last_k_cycles=args.take_last_k_cycles,
                                 pos_replacement=False,
-                                filter_pos=True)
+                                filter_pos=True,
+                                use_string_loc=not args.ignore_string_loc)
         final_val_workers.append(curr_worker)
         curr_worker.start()
 
@@ -284,7 +295,6 @@ with tf.Session() as sess:
 
     if eval_on_varying_seq:
         for curr_seq_len in test_sequences:
-
             test_x_ph = tf.placeholder("float", [None, curr_seq_len, n_input_dim])
             test_y_ph = tf.placeholder("float", [None, n_output_dim])
             test_seqlen_ph = tf.placeholder(tf.int32, [None])
