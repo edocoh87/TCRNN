@@ -1,6 +1,9 @@
 import tensorflow as tf
 import numpy as np
 import argparse
+import datetime
+import os
+import json
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
@@ -31,8 +34,12 @@ parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
 parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum')
+parser.add_argument('--log_dir', type=str, default='logs/')
 
 args = parser.parse_args()
+
+now = datetime.datetime.now()
+dir_name = now.strftime("%Y_%m_%d-%H:%M:%S")
 
 tf.reset_default_graph()
 
@@ -168,16 +175,30 @@ train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
 
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
+tf.summary.scalar('Loss', loss)
+tf.summary.scalar('Cost', cost)
+tf.summary.scalar('Accuracy', accuracy)
+tf.summary.scalar('Learning Rate', lr)
+
 summary_ops = [cost, accuracy]
-if not commutative_regularization_term is None:
+if commutative_regularization_term is not None:
     summary_ops += [commutative_regularization_term]
+    tf.summary.scalar('regularization loss', commutative_regularization_term)
+
+merged = tf.summary.merge_all()
+summary_ops = summary_ops + [merged]
+# making directory to save tensorboard files.
+log_dir_path = os.path.join(args.log_dir, dir_name)
+os.mkdir(log_dir_path)
+with open(os.path.join(log_dir_path, 'config.json'), 'w') as f:
+    f.write(json.dumps(vars(args), indent=4))
 
 # Initialize the variables (i.e. assign their default value)
 init = tf.global_variables_initializer()
 
 # Start training
 with tf.Session() as sess:
-
+    train_writer = tf.summary.FileWriter(log_dir_path, sess.graph)
     # Run the initializer
     sess.run(init)
     training_results = []
@@ -205,6 +226,7 @@ with tf.Session() as sess:
             # _pred, _y = sess.run([tf.round(pred), y], feed_dict=curr_feed_dict)
             # print('DEBUG pred: {}'.format(_pred))
             # print('DEBUG y: {}'.format(_y))
+            train_writer.add_summary(_summary_ops[-1], step)
             summary_print = "Step " + str(step) + ", Minibatch Loss=" + \
                             "{:.6f}".format(_summary_ops[0]) + ", Training Accuracy=" + \
                             "{:.5f}".format(_summary_ops[1]) + \
@@ -213,10 +235,10 @@ with tf.Session() as sess:
             if not commutative_regularization_term is None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
             
-            print(summary_print)
             # for i in range(len(_pred)):
             #   print('pred {}, target {}, sequence length {}'.format(_pred[i], batch_y[i], batch_seqlen[i]))
 
+    train_writer.close()
     print("Optimization Finished!")
 
     # Calculate accuracy
