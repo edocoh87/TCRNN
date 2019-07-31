@@ -28,12 +28,20 @@ def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False
                 [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
     )
     def _input_fn(x):
-        btch, set_size, input_dim = x.get_shape().as_list()
+        set_size = None
+        try:
+            _btch, set_size, _input_dim = x.get_shape().as_list()
+        except:
+            pass
+
         for i in range(len(arch)-1):
             if reduce_max:
-                print('shape: ', [-1, set_size, arch[i]])
-                x = tf.reshape(x, [-1, set_size, arch[i]])
-                xm = tf.reduce_max(x, axis=1, keepdims=True)
+                # print('shape: ', [-1, set_size, arch[i]])
+                if set_size is not None:
+                    x = tf.reshape(x, [-1, set_size, arch[i]])
+                    xm = tf.reduce_max(x, axis=1, keepdims=True)
+                else:
+                    xm = tf.reduce_max(x, axis=0, keepdims=True)
                 x -= xm
             x = tf.reshape(x, [-1, arch[i]])
             if dropout:
@@ -52,7 +60,7 @@ def create_output_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=
                 #[('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
                 [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
     )
-    def _input_fn(x):
+    def _output_fn(x):
         for i in range(len(arch)-1):
             if dropout:
                 x = tf.nn.dropout(x, tf.constant(0.5))
@@ -63,7 +71,7 @@ def create_output_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=
             x = curr_acivation(x)
         return x
 
-    return _input_fn
+    return _output_fn
 
 
 def deepset_model(x, seqlen, input_model_fn, output_model_fn, seq_max_len, input_dim):
@@ -111,8 +119,15 @@ class CommRNN(object):
         
         # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
         x = tf.unstack(x, seq_max_len, 1)
-        # x_transformed = [tf.matmul(_x, tf.transpose(weights['in'])) for _x in x]
+        # # x_transformed = [tf.matmul(_x, tf.transpose(weights['in'])) for _x in x]
         x_transformed = [self.input_model_fn(_x) for _x in x]
+        # pre_shp = tf.shape(x)
+        # x_transformed = self.input_model_fn(x)
+        # post_shp = tf.shape(x)
+        # x_transformed = tf.reshape(x_transformed, [pre_shp[0], pre_shp[1], post_shp[-1]])
+        # print(x_transformed)
+        # exit()
+
         # x_transformed = [tf.matmul(_x, weights['in']) for _x in x]
         # Get rnn cell output, providing 'sequence_length' will perform dynamic
         # calculation.
@@ -195,7 +210,6 @@ class DeepSet(object):
             x = mask*x
 
         x = tf.reshape(x, [pre_shp[0], pre_shp[1], post_shp[-1]])
-
         # aggregate each sequence
         x_pooled = self.agg_fn(x, axis=1)
         # perform the post aggregation function
