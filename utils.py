@@ -10,6 +10,7 @@ import json
 
 data_stats = json.load(open('/specific/netapp5_2/gamir/achiya/Sandisk/new_data/means_stds_new.json', 'r'))
 
+
 def print_confusion_matrix(true_labels, pred_labels):
     # if all of predicted labels are the same, don't print
     print('Confusion matrix:')
@@ -45,7 +46,7 @@ def print_confusion_matrix_w_thresh(true_labels, pred_scores, thresh, thresh_typ
     if thresh_type == 'fpr':
         confidence_thresh = thresholds[np.searchsorted(fpr, thresh)]
         pred_labels = (pred_scores[:, 0] <= confidence_thresh).astype(int)
-        print('Normalized confusion matrix with fpr rate = {}'.format(thresh))
+        print('Normalized confusion matrix with false positive rate = {}'.format(thresh))
         print_normed_confusion_matrix(true_labels, pred_labels)
     else:  # 'fnr'
         confidence_thresh = thresholds[np.searchsorted(tpr, 1 - thresh)]
@@ -115,14 +116,15 @@ def filter_short_strings(data, n_features, take_last_k_cycles):
     return data
 
 
-def print_stats_from_feeddict(sess, ops, curr_feed_dict, with_reg_loss, labels, step):
+def print_stats_from_feeddict(sess, placeholders, ops, curr_feed_dict, with_reg_loss, labels, step, fpr):
+    x, y, lr, is_train, seqlen = placeholders
     if len(ops) == 1:
         _summary_ops = sess.run(ops[0], feed_dict=curr_feed_dict)
     else:
         summary_ops, pred = ops
         _summary_ops, _pred = sess.run([summary_ops, pred], feed_dict=curr_feed_dict)
     summary_print = "Train:      Step {}, Minibatch Loss= {:.6f}, Accuracy= {:.5f}, learning rate={}".format(
-        step, _summary_ops[0], _summary_ops[1], 'TO FIX LR PRINT!!!')
+        step, _summary_ops[0], _summary_ops[1], curr_feed_dict[lr])
     if with_reg_loss:
         summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
     print(summary_print)
@@ -134,20 +136,26 @@ def print_stats_from_feeddict(sess, ops, curr_feed_dict, with_reg_loss, labels, 
 
         print_confusion_matrix(true_labels, test_pred_labels)
         print_normed_confusion_matrix(true_labels, test_pred_labels)
-        print_confusion_matrix_w_thresh(true_labels, _pred, thresh=0.188)
+        print_confusion_matrix_w_thresh(true_labels, _pred, thresh=fpr)
 
 
-def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samples, step):
+def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samples, step, fpr, dset, num_workers,
+                               plot_roc=False, roc_save_path=None):
+    assert not (plot_roc and not roc_save_path), 'No path specified for ROC curve!'
     num_samples_calculated = 0
     all_labels = []
     all_preds = []
     losses_sum = 0
     accuracies_sum = 0
     reg_losses_sum = 0
+    nones_count = 0
     next_1000 = 1
-    x, y, lr, seqlen = feed_dict_gen.placeholders
-    while num_samples_calculated < num_samples:
+    x, y, lr, is_train, seqlen = feed_dict_gen.placeholders
+    while (num_samples == -1 or num_samples_calculated < num_samples) and nones_count < num_workers:
         curr_feed_dict = feed_dict_gen.create_feed_dict()
+        if not curr_feed_dict:
+            nones_count += 1
+            continue
         summary_ops, pred = ops
         _summary_ops, _pred = sess.run([summary_ops, pred], feed_dict=curr_feed_dict)
         all_labels.append(curr_feed_dict[y])
@@ -158,14 +166,15 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
             reg_losses_sum += _summary_ops[2] * _pred.shape[0]
         num_samples_calculated += _pred.shape[0]
         if num_samples_calculated / 1000 > next_1000:
-            print('Finished {} out of {} val examples'.format(next_1000 * 1000, num_samples))
+            print('Finished {} out of {} {} examples'.format(next_1000 * 1000,
+                                                             num_samples if num_samples > -1 else 'All', dset))
             next_1000 += 1
 
     all_labels = np.concatenate(all_labels)
     all_preds = np.concatenate(all_preds)
 
     summary_print = "Val:        Step {}, Minibatch Loss= {:.6f}, Accuracy= {:.5f}, learning rate={}".format(
-        step, losses_sum / num_samples_calculated, accuracies_sum / num_samples_calculated, 'TO FIX LR PRINT!!!')
+        step, losses_sum / num_samples_calculated, accuracies_sum / num_samples_calculated, curr_feed_dict[lr])
     if with_reg_loss:
         summary_print += ", Regularization Loss=" + "{:.6f}".format(reg_losses_sum / num_samples_calculated)
     print(summary_print)
@@ -177,4 +186,6 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
 
         print_confusion_matrix(true_labels, test_pred_labels)
         print_normed_confusion_matrix(true_labels, test_pred_labels)
-        print_confusion_matrix_w_thresh(true_labels, all_preds, thresh=0.188)
+        print_confusion_matrix_w_thresh(true_labels, all_preds, thresh=fpr)
+        if plot_roc:
+            plot_roc_curve(true_labels, all_preds, roc_save_path)

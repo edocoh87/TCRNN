@@ -12,8 +12,8 @@ from SanDiskGenerator import SanDiskGenerator
 
 import models
 from utils import *
-from worker import ProcessWorker, ThreadWorker
 from SDFeedDictGenerator import FeedDictGenerator
+from create_queue import *
 
 ######################
 # Required Arguments
@@ -44,9 +44,15 @@ parser.add_argument("--take_last_k_cycles", type=int, default=-1)
 parser.add_argument("--oversample_pos", action="store_true")
 parser.add_argument("--ignore_string_loc", action="store_true")
 parser.add_argument("--concat_all_cycles", action="store_true")
+parser.add_argument("--fpr", type=float, default=0.09)
+parser.add_argument("--num_test_samples", type=int, default=10000)
+parser.add_argument("--dropout_rate", type=float, default=0)
+parser.add_argument("--num_workers", type=int, default=8)
+parser.add_argument("--neg_weights", type=float, default=1.0)
 
 args = parser.parse_args()
-
+if args.debug:
+    args.num_workers = 1
 tf.reset_default_graph()
 
 
@@ -61,10 +67,6 @@ batch_size = args.batch_size
 n_hidden_dim = args.n_hidden_dim
 
 pos_files_path = lambda dataset: '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/all_fails_{0}.csv'.format(dataset)
-if args.debug:
-    my_worker = ThreadWorker
-else:
-    my_worker = ProcessWorker
 
 if args.experiment == 'pnt-cld':
     DataGenerator = PointCloudGenerator
@@ -112,41 +114,17 @@ elif args.experiment == 'san-disk':
     n_features = 11
     train_files = glob(FILES_PATH + 'train/DUT*/*.csv')
     val_files = glob(FILES_PATH + 'val/DUT*/*.csv')
+    test_files = glob(FILES_PATH + 'test/DUT*/*.csv')
 
-    # Start queue
-    train_batches_queue = multiprocessing.Queue(maxsize=10)
-    val_batches_queue = multiprocessing.Queue(maxsize=10)
+    train_batches_queue, train_workers = create_queue_and_workers(args.debug, train_files, batch_size, n_features,
+                                                                  pos_files_path('train'), args.oversample_pos,
+                                                                  args.ignore_string_loc, args.take_last_k_cycles,
+                                                                  args.num_workers, pos_replacement=True)
 
-    # Start workers
-    train_workers = []
-    val_workers = []
-    num_workers = 1 if args.debug else 8
-    for worker_num in range(num_workers):
-        first_file_idx = int(worker_num * len(train_files) / num_workers)
-        last_file_idx = int((worker_num + 1) * len(train_files) / num_workers)
-        curr_worker = my_worker(queue=train_batches_queue,
-                                batch_size=args.batch_size,
-                                files=train_files[first_file_idx: last_file_idx],
-                                n_features=n_features,
-                                pos_file=pos_files_path('train') if args.oversample_pos else None,
-                                take_last_k_cycles=args.take_last_k_cycles,
-                                use_string_loc=not args.ignore_string_loc)
-        train_workers.append(curr_worker)
-    if not args.debug:
-        for worker_num in range(num_workers):
-            first_file_idx = int(worker_num * len(val_files) / num_workers)
-            last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
-            curr_worker = my_worker(queue=val_batches_queue,
-                                    batch_size=args.batch_size,
-                                    files=val_files[first_file_idx: last_file_idx],
-                                    n_features=n_features,
-                                    pos_file=pos_files_path('val') if args.oversample_pos else None,
-                                    take_last_k_cycles=args.take_last_k_cycles,
-                                    use_string_loc=not args.ignore_string_loc)
-            val_workers.append(curr_worker)
-
-    for worker in train_workers + val_workers:
-        worker.start()
+    val_batches_queue, val_workers = create_queue_and_workers(args.debug, val_files, batch_size, n_features,
+                                                              pos_files_path('val'), args.oversample_pos,
+                                                              args.ignore_string_loc, args.take_last_k_cycles,
+                                                              args.num_workers, pos_replacement=False)
 
     DataGenerator = SanDiskGenerator
     n_input_dim = 11
@@ -182,15 +160,17 @@ else:
     x = tf.placeholder(tf.float32, [None, args.take_last_k_cycles, n_input_dim])
 y = tf.placeholder(tf.float32, [None, n_output_dim])
 lr = tf.placeholder(tf.float32, [])
+is_train = tf.placeholder(tf.bool, [])
 # A placeholder for indicating each sequence length
 seqlen = None
 if use_seqlen:
     seqlen = tf.placeholder(tf.int32, [None])
 
-placeholders = (x, y, lr, seqlen)
+placeholders = (x, y, lr, is_train, seqlen)
 
-input_model_fn = models.create_model_fn(arch=input_model_arch, activation=tf.nn.tanh)
-output_model_fn = models.create_model_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True)
+input_model_fn = models.create_model_fn(arch=input_model_arch, dropout_rate=args.dropout_rate, activation=tf.nn.tanh)
+output_model_fn = models.create_model_fn(arch=output_model_arch, dropout_rate=args.dropout_rate, activation=tf.nn.tanh,
+                                         disable_last_layer_activation=True)
 
 if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
@@ -200,7 +180,7 @@ if ARCHITECTURE == 'CommRNN':
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn)
 
-    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, seqlen)
+    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, is_train, seqlen)
     commutative_regularization_term = model.build_reg()
 elif ARCHITECTURE == 'DeepSet':
     model = models.DeepSet(
@@ -208,7 +188,7 @@ elif ARCHITECTURE == 'DeepSet':
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn,
                 aggregation_mode='sum')
-    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, seqlen)
+    pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, is_train, seqlen)
     commutative_regularization_term = None
 else:
     raise Exception("Unkown model, please select 'CommRNN' or 'DeepSet'.")
@@ -219,7 +199,8 @@ if n_output_dim == 1:
     loss = tf.losses.mean_squared_error(labels=y, predictions=pred)
     correct_pred = tf.equal(tf.round(pred), y)
 else:
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=pred))
+    loss = tf.reduce_mean(tf.nn.weighted_cross_entropy_with_logits(targets=y, logits=pred,
+                                                                   pos_weight=1.0 / args.neg_weights))
     correct_pred = tf.equal(tf.argmax(pred, axis=1), tf.argmax(y, axis=1))
 # cost = loss + comm_reg_weight*empricial_regularization_loss + expct_comm_reg_weight*commutative_regularization_term
 cost = loss if commutative_regularization_term is None else \
@@ -256,9 +237,16 @@ with tf.Session() as sess:
         _ = sess.run([train_op], feed_dict=curr_feed_dict)
         if step % display_step == 0 or step == 1:
             # Calculate batch accuracy & loss
-            print_stats_from_feeddict(sess, (summary_ops, ), curr_feed_dict, with_reg_loss, curr_feed_dict[y], step)
+            print_stats_from_feeddict(sess, placeholders, (summary_ops, ), curr_feed_dict, with_reg_loss,
+                                      curr_feed_dict[y], step, args.fpr)
         if step % val_display_step == 0:
-            print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, ValGenerator, 1000, step)
+            print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, ValGenerator, 10000, step, args.fpr,
+                                       dset='val', num_workers=args.num_workers)
+            val_batches_queue, val_workers = \
+                create_queue_and_workers(args.debug, val_files, batch_size, n_features, pos_files_path('val'),
+                                         args.oversample_pos, args.ignore_string_loc, args.take_last_k_cycles,
+                                         pos_replacement=False, prev_workers=val_workers, num_workers=args.num_workers)
+            ValGenerator.set_queue(val_batches_queue)
 
     print("Optimization Finished!")
     save_path = 'models/{}'.format(args.exp_name)
@@ -266,30 +254,16 @@ with tf.Session() as sess:
     ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
     print("Saved model to file: {}".format(ckpt_save_path))
 
-    for worker in train_workers + val_workers:
-        worker.terminate()
-    del val_batches_queue
-    del train_batches_queue
+    test_batches_queue, final_val_workers = \
+        create_queue_and_workers(args.debug, test_files, batch_size, n_features, pos_files_path('test'),
+                                 args.oversample_pos, args.ignore_string_loc, args.take_last_k_cycles,
+                                 pos_replacement=False, prev_workers=train_workers + val_workers,
+                                 num_workers=args.num_workers)
 
-    final_val_batches_queue = multiprocessing.Queue(maxsize=10)
-    final_val_workers = []
-    for worker_num in range(num_workers):
-        first_file_idx = int(worker_num * len(val_files) / num_workers)
-        last_file_idx = int((worker_num + 1) * len(val_files) / num_workers)
-        curr_worker = my_worker(queue=final_val_batches_queue,
-                                batch_size=args.batch_size,
-                                files=val_files[first_file_idx: last_file_idx],
-                                n_features=n_features,
-                                pos_file=pos_files_path('val') if args.oversample_pos and worker_num == 0 else None,
-                                take_last_k_cycles=args.take_last_k_cycles,
-                                pos_replacement=False,
-                                filter_pos=True,
-                                use_string_loc=not args.ignore_string_loc)
-        final_val_workers.append(curr_worker)
-        curr_worker.start()
-
-    FinalValGenerator = FeedDictGenerator(final_val_batches_queue, placeholders, use_seqlen, lambda x: 0, 'FinalVal')
-    print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, FinalValGenerator, 1000000, 0)
+    TestGenerator = FeedDictGenerator(test_batches_queue, placeholders, use_seqlen, lambda x: 0, 'FinalVal')
+    print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, TestGenerator, args.num_test_samples, 0,
+                               fpr=args.fpr, dset='test', num_workers=args.num_workers, plot_roc=True,
+                               roc_save_path=save_path)
 
     if eval_on_varying_seq:
         for curr_seq_len in test_sequences:

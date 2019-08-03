@@ -20,20 +20,23 @@ linear_activation = lambda x: x
 
 
 
-def create_model_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False):
+def create_model_fn(arch, dropout_rate, activation=tf.nn.tanh, disable_last_layer_activation=False):
     weights = dict(
                 [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
     )
     biases = dict(
                 [('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
     )
-    def _input_fn(x):
+    def _input_fn(x, is_train):
         for i in range(len(arch)-1):
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
             # wheather the last layer is linear or not.
             curr_acivation = linear_activation if \
                                 (i == len(arch)-2 and disable_last_layer_activation) else activation
             x = curr_acivation(x)
+
+            #  Dropout
+            x = tf.cond(is_train, lambda: tf.nn.dropout(x, rate=dropout_rate), lambda: x)
         return x
 
     return _input_fn
@@ -75,7 +78,7 @@ class CommRNN(object):
         self.output_model_fn = output_model_fn
         self.rnn_cell = CommutativeRNNcell(self.n_hidden_dim, self.n_computation_dim, self.activation)
 
-    def build_rnn(self, x, seq_max_len, seqlen=None):
+    def build_rnn(self, x, seq_max_len, is_train, seqlen=None):
         # def dynamicRNN(x, seqlen, cell, input_model_fn, output_model_fn, seq_max_len, n_hidden, initial_state=None):
 
         # Prepare data shape to match `rnn` function requirements
@@ -85,7 +88,7 @@ class CommRNN(object):
         # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
         x = tf.unstack(x, seq_max_len, 1)
         # x_transformed = [tf.matmul(_x, tf.transpose(weights['in'])) for _x in x]
-        x_transformed = [self.input_model_fn(_x) for _x in x]
+        x_transformed = [self.input_model_fn(_x, is_train) for _x in x]
         # x_transformed = [tf.matmul(_x, weights['in']) for _x in x]
         # Get rnn cell output, providing 'sequence_length' will perform dynamic
         # calculation.
@@ -123,16 +126,15 @@ class CommRNN(object):
             # for dynamic calculations, the sequence is always of length seq_max_len
             outputs = outputs[-1]
 
-        outputs = self.output_model_fn(outputs)
+        outputs = self.output_model_fn(outputs, is_train)
         return outputs
         
-    def build(self, x, seq_max_len, seqlen=None):
-        return self.build_rnn(x, seq_max_len, seqlen)
+    def build(self, x, seq_max_len, is_train, seqlen=None):
+        return self.build_rnn(x, seq_max_len, is_train, seqlen)
 
     def build_reg(self):
         self.comm_reg = self.rnn_cell.get_comm_regularizer()
         return self.comm_reg
-
 
 
 class DeepSet(object):
@@ -153,11 +155,11 @@ class DeepSet(object):
             self.agg_fn = tf.reduce_max
 
 
-    def build(self, x, seq_max_len, seqlen=None):
+    def build(self, x, seq_max_len, is_train, seqlen=None):
         # stack the sequence and batch into one axis to create a matrix [batch_size*n_steps, input_dim]
         pre_shp = tf.shape(x)
         x = tf.reshape(x, [-1, self.input_dim])
-        x = self.input_model_fn(x)
+        x = self.input_model_fn(x, is_train)
         post_shp = tf.shape(x)
         
         if seqlen is not None:
@@ -172,5 +174,5 @@ class DeepSet(object):
         # aggregate each sequence
         x_pooled = self.agg_fn(x, axis=1)
         # perform the post aggregation function
-        outputs = self.output_model_fn(x_pooled)
+        outputs = self.output_model_fn(x_pooled, is_train)
         return outputs

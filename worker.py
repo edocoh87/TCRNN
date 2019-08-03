@@ -33,11 +33,11 @@ class BaseWorker(object):
         self.filter_pos = filter_pos
         self.use_string_loc = use_string_loc
         self.concat_all_cycles = concat_all_cycles
-
-    def load_batch(self):
         if not self.pos_replacement and self.pos_df is not None:
             self.data = self.pos_df
             self.pos_df = None
+
+    def load_batch(self):
         while len(self.data) < self.batch_size and self.last_index < len(self.permutation):
             new_data = pd.read_csv(self.files[self.permutation[self.last_index]], index_col=False)
             self.last_index += 1
@@ -60,8 +60,10 @@ class BaseWorker(object):
         return preprocessed_batch
 
     def run(self):
-        while not self.is_finished:
-            self.queue.put(self.load_batch())
+        if len(self.files) > 0:
+            while not self.is_finished:
+                self.queue.put(self.load_batch())
+        self.queue.put(None)
 
 
 class ProcessWorker(BaseWorker, multiprocessing.Process):
