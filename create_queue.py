@@ -14,23 +14,21 @@ def create_queue_and_workers(is_debug, files, batch_size, n_features, pos_files_
     batches_queue = multiprocessing.Queue(maxsize=10)
     workers = []
     for worker_num in range(num_workers):
-        first_file_idx = int(worker_num * len(files) / num_workers)
-        last_file_idx = int((worker_num + 1) * len(files) / num_workers)
-        cur_pos_file = pos_files_path if (pos_replacement or (not pos_replacement and worker_num == 0)) else None
+        first_nonfail_file_idx = int(worker_num * len(files) / num_workers)
+        last_nonfail_file_idx = int((worker_num + 1) * len(files) / num_workers)
+        first_fail_file_idx = int(worker_num * len(pos_files_path) / num_workers)
+        last_fail_file_idx = int((worker_num + 1) * len(pos_files_path) / num_workers)
         curr_worker = my_worker(queue=batches_queue,
                                 batch_size=batch_size,
-                                files=files[first_file_idx: last_file_idx],
+                                files=files[first_nonfail_file_idx: last_nonfail_file_idx],
                                 n_features=n_features,
-                                pos_file=cur_pos_file,
+                                pos_files=pos_files_path[first_fail_file_idx: last_fail_file_idx],
                                 take_last_k_cycles=take_last_k_cycles,
                                 use_string_loc=not ignore_string_loc,
-                                pos_replacement=pos_replacement if worker_num == 0 else True)
+                                pos_replacement=pos_replacement)
         workers.append(curr_worker)
 
     for worker_id, worker in enumerate(workers):
         worker.start()
-        # give the first thread some more time to load all of the positive examples
-        if not pos_replacement and worker_id == 0:
-            time.sleep(5)
 
     return batches_queue, workers

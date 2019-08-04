@@ -12,7 +12,7 @@ import multiprocessing
 POS_PATH = '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/split/'
 
 class BaseWorker(object):
-    def __init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+    def __init__(self, queue, batch_size, files, n_features, pos_files, neg_percentage, take_last_k_cycles,
                  pos_replacement, filter_pos, use_string_loc, concat_all_cycles):
         self.queue = queue
         self.batches_count = 0
@@ -25,8 +25,8 @@ class BaseWorker(object):
         self.data = pd.DataFrame({'PC': []})
         self.is_finished = False
         self.pos_df = None
-        if pos_file:
-            self.pos_df = pd.read_csv(pos_file, index_col=False)
+        if pos_files and len(pos_files) > 0:
+            self.pos_df = pd.concat([pd.read_csv(x, index_col=False) for x in pos_files])
             self.pos_df = filter_short_strings(self.pos_df, self.n_features, self.take_last_k_cycles)
         self.neg_percentage = neg_percentage
         self.pos_replacement = pos_replacement
@@ -67,16 +67,16 @@ class BaseWorker(object):
 
 
 class ProcessWorker(BaseWorker, multiprocessing.Process):
-    def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
+    def __init__(self, queue, batch_size, files, n_features, pos_files=None, neg_percentage=0.9, take_last_k_cycles=-1,
                  pos_replacement=True, filter_pos=False, use_string_loc=True, concat_all_cycles=False):
-        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_files, neg_percentage, take_last_k_cycles,
                  pos_replacement, filter_pos, use_string_loc, concat_all_cycles)
         multiprocessing.Process.__init__(self, daemon=True)
 
 
 class ThreadWorker(BaseWorker, threading.Thread):
-    def __init__(self, queue, batch_size, files, n_features, pos_file=None, neg_percentage=0.9, take_last_k_cycles=-1,
+    def __init__(self, queue, batch_size, files, n_features, pos_files=None, neg_percentage=0.9, take_last_k_cycles=-1,
                  pos_replacement=True, filter_pos=False, use_string_loc=True, concat_all_cycles=False):
-        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_file, neg_percentage, take_last_k_cycles,
+        BaseWorker.__init__(self, queue, batch_size, files, n_features, pos_files, neg_percentage, take_last_k_cycles,
                  pos_replacement, filter_pos, use_string_loc, concat_all_cycles)
         threading.Thread.__init__(self, daemon=True)

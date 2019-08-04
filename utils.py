@@ -151,11 +151,14 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
     nones_count = 0
     next_1000 = 1
     x, y, lr, is_train, seqlen = feed_dict_gen.placeholders
+    cur_lr = None
     while (num_samples == -1 or num_samples_calculated < num_samples) and nones_count < num_workers:
         curr_feed_dict = feed_dict_gen.create_feed_dict()
         if not curr_feed_dict:
             nones_count += 1
             continue
+        else:
+            cur_lr = curr_feed_dict[lr]
         summary_ops, pred = ops
         _summary_ops, _pred = sess.run([summary_ops, pred], feed_dict=curr_feed_dict)
         all_labels.append(curr_feed_dict[y])
@@ -174,7 +177,7 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
     all_preds = np.concatenate(all_preds)
 
     summary_print = "Val:        Step {}, Minibatch Loss= {:.6f}, Accuracy= {:.5f}, learning rate={}".format(
-        step, losses_sum / num_samples_calculated, accuracies_sum / num_samples_calculated, curr_feed_dict[lr])
+        step, losses_sum / num_samples_calculated, accuracies_sum / num_samples_calculated, cur_lr)
     if with_reg_loss:
         summary_print += ", Regularization Loss=" + "{:.6f}".format(reg_losses_sum / num_samples_calculated)
     print(summary_print)

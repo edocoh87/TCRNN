@@ -66,7 +66,8 @@ training_steps = args.training_steps
 batch_size = args.batch_size
 n_hidden_dim = args.n_hidden_dim
 
-pos_files_path = lambda dataset: '/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/all_fails_{0}.csv'.format(dataset)
+pos_files_path = lambda dataset: glob('/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/phase*.csv'
+                                      .format(dataset))
 
 if args.experiment == 'pnt-cld':
     DataGenerator = PointCloudGenerator
