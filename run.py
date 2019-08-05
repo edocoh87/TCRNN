@@ -180,6 +180,13 @@ def main(args):
         number_of_layers = n_layers
         stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_cell(is_lstm) for _ in range(number_of_layers)])
 #        basic_cell = tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
+        time = tf.expand_dims(tf.expand_dims(tf.range(args.take_last_k_cycles,dtype=tf.float32),0),2)
+        time = tf.tile(time, [128,1,1])
+        print('UnSpreadX:', x)
+        print('Time:', time)
+        
+        x = tf.concat([time,x], axis=2)
+        print('SpreadX:', x)
         rnn_output, states = tf.nn.dynamic_rnn(stacked_lstm, x, dtype=tf.float32) 
         print('RNN Out:', rnn_output)
         stacked_rnn_output = tf.reshape(rnn_output[:,-1,:], [-1, r_neuron])
