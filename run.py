@@ -28,6 +28,8 @@ def main(args):
     training_steps = args.training_steps
     batch_size = args.batch_size
     n_hidden_dim = args.n_hidden_dim
+    n_layers = args.n_layers
+    is_lstm = args.is_lstm
 
     pos_files_path = lambda dataset: glob('/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/phase*.csv'
                                           .format(dataset))
@@ -136,6 +138,7 @@ def main(args):
     output_model_fn = models.create_model_fn(arch=output_model_arch, dropout_rate=args.dropout_rate, activation=tf.nn.tanh,
                                              disable_last_layer_activation=True)
 
+    
     if ARCHITECTURE == 'CommRNN':
         model = models.CommRNN(
                     n_hidden_dim=n_hidden_dim,
@@ -154,6 +157,35 @@ def main(args):
                     aggregation_mode='sum')
         pred = model.build(x, seq_max_len if args.take_last_k_cycles == -1 else args.take_last_k_cycles, is_train, seqlen)
         commutative_regularization_term = None
+    elif ARCHITECTURE == 'RNN':
+        r_neuron = 120
+        n_output = 2
+        commutative_regularization_term = None
+        basic_cell = tf.contrib.rnn.BasicRNNCell(num_units=r_neuron, activation=tf.nn.relu)
+        rnn_output, states = tf.nn.dynamic_rnn(basic_cell, x, dtype=tf.float32) 
+        print('RNN Out:', rnn_output)
+        stacked_rnn_output = tf.reshape(rnn_output[:,-1,:], [-1, r_neuron])
+        print('Stacked RNN Out:', stacked_rnn_output)
+        pred = tf.layers.dense(stacked_rnn_output, n_output)
+        print('pred:', pred)
+    elif ARCHITECTURE == 'LSTM':
+        r_neuron = n_hidden_dim
+        n_output = 2
+        commutative_regularization_term = None
+        def lstm_cell(is_lstm):
+            if is_lstm:
+                return tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
+            else:
+                return tf.contrib.rnn.BasicRNNCell(num_units=r_neuron, activation=tf.nn.relu)
+        number_of_layers = n_layers
+        stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_cell(is_lstm) for _ in range(number_of_layers)])
+#        basic_cell = tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
+        rnn_output, states = tf.nn.dynamic_rnn(stacked_lstm, x, dtype=tf.float32) 
+        print('RNN Out:', rnn_output)
+        stacked_rnn_output = tf.reshape(rnn_output[:,-1,:], [-1, r_neuron])
+        print('Stacked RNN Out:', stacked_rnn_output)
+        pred = tf.layers.dense(stacked_rnn_output, n_output)
+        print('pred:', pred)
     else:
         raise Exception("Unkown model, please select 'CommRNN' or 'DeepSet'.")
 
@@ -169,7 +201,8 @@ def main(args):
     cost = loss if commutative_regularization_term is None else \
                     loss + expct_comm_reg_weight*commutative_regularization_term
 
-    train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
+##    train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
+    train_op = tf.train.AdagradOptimizer(learning_rate=0.1).minimize(cost)
 
     # Evaluate model
     accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
@@ -208,21 +241,22 @@ def main(args):
                 ValGenerator.set_queue(val_batches_queue)
 
         print("Optimization Finished!")
-        save_path = '/specific/netapp5_2/gamir/achiya/Sandisk/TCRNN/models/{}'.format(args.exp_name)
+        save_path = '/specific/netapp5_2/gamir/proj/TCRNN/models/{}'.format(args.exp_name)
         os.makedirs(save_path, exist_ok=True)
         ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
         print("Saved model to file: {}".format(ckpt_save_path))
 
-        test_batches_queue, final_val_workers = \
-            create_queue_and_workers(args.debug, test_files, batch_size, n_features, pos_files_path('test'),
-                                     args.oversample_pos, args.ignore_string_loc, args.take_last_k_cycles,
-                                     pos_replacement=False, prev_workers=train_workers + val_workers,
-                                     num_workers=args.num_workers)
+        if args.num_test_samples > 0:
+            test_batches_queue, final_val_workers = \
+                create_queue_and_workers(args.debug, test_files, batch_size, n_features, pos_files_path('test'),
+                args.oversample_pos, args.ignore_string_loc, args.take_last_k_cycles,
+                pos_replacement=False, prev_workers=train_workers + val_workers,
+                num_workers=args.num_workers)
 
-        TestGenerator = FeedDictGenerator(test_batches_queue, placeholders, use_seqlen, lambda x: 0, 'FinalVal')
-        print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, TestGenerator, args.num_test_samples, 0,
-                                   fpr=args.fpr, dset='test', num_workers=args.num_workers, plot_roc=True,
-                                   roc_save_path=save_path)
+            TestGenerator = FeedDictGenerator(test_batches_queue, placeholders, use_seqlen, lambda x: 0, 'FinalVal')
+            print_stats_from_generator(sess, (summary_ops, pred), with_reg_loss, TestGenerator, args.num_test_samples, 0,
+                                       fpr=args.fpr, dset='test', num_workers=args.num_workers, plot_roc=True,
+                                       roc_save_path=save_path)
 
         if eval_on_varying_seq:
             for curr_seq_len in test_sequences:
@@ -250,11 +284,13 @@ if __name__ == '__main__':
     # Required Arguments
     ######################
     parser = argparse.ArgumentParser(description='Run set experiments.')
-    parser.add_argument('--model', required=True, type=str, choices=['CommRNN', 'DeepSet'],
+    parser.add_argument('--model', required=True, type=str, choices=['CommRNN', 'DeepSet', 'RNN', 'LSTM'],
                                     help="model to use for experiment.")
     parser.add_argument('--training_steps', required=True, type=int)
     parser.add_argument('--batch_size', required=True, type=int)
     parser.add_argument('--n_hidden_dim', required=True, type=int)
+    parser.add_argument('--n_layers', required=True, type=int)
+    parser.add_argument('--is_lstm', required=True, type=int)
     parser.add_argument('--experiment', required=True, type=str, choices=
                         ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk'])
 
