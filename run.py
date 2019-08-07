@@ -174,9 +174,12 @@ def main(args):
         commutative_regularization_term = None
         def lstm_cell(is_lstm):
             if is_lstm:
-                return tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
+                layer = tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
             else:
-                return tf.contrib.rnn.BasicRNNCell(num_units=r_neuron, activation=tf.nn.relu)
+                layer = tf.contrib.rnn.BasicRNNCell(num_units=r_neuron, activation=tf.nn.relu)
+            keep_rate = tf.cond(is_train,lambda:tf.constant(args.dropout_rate), lambda:tf.constant(1.0))
+            return tf.nn.rnn_cell.DropoutWrapper(layer, input_keep_prob=keep_rate, output_keep_prob=keep_rate)
+
         number_of_layers = n_layers
         stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_cell(is_lstm) for _ in range(number_of_layers)])
 #        basic_cell = tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
