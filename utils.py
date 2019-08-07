@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from pdb import set_trace as trace
 import os
 import json
+from tqdm import tqdm
 
 data_stats = json.load(open('/specific/netapp5_2/gamir/achiya/Sandisk/new_data/means_stds_new.json', 'r'))
 
@@ -149,9 +150,9 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
     accuracies_sum = 0
     reg_losses_sum = 0
     nones_count = 0
-    next_1000 = 1
     x, y, lr, is_train, seqlen = feed_dict_gen.placeholders
     cur_lr = None
+    prog_bar = tqdm(total=num_samples if num_samples > -1 else 6799872)
     while (num_samples == -1 or num_samples_calculated < num_samples) and nones_count < num_workers:
         curr_feed_dict = feed_dict_gen.create_feed_dict()
         if not curr_feed_dict:
@@ -168,10 +169,7 @@ def print_stats_from_generator(sess, ops, with_reg_loss, feed_dict_gen, num_samp
         if with_reg_loss:
             reg_losses_sum += _summary_ops[2] * _pred.shape[0]
         num_samples_calculated += _pred.shape[0]
-        if num_samples_calculated / 1000 > next_1000:
-            print('Finished {} out of {} {} examples'.format(next_1000 * 1000,
-                                                             num_samples if num_samples > -1 else 'All', dset))
-            next_1000 += 1
+        prog_bar.update(_pred.shape[0])
 
     all_labels = np.concatenate(all_labels)
     all_preds = np.concatenate(all_preds)

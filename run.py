@@ -31,6 +31,8 @@ def main(args):
     n_layers = args.n_layers
     is_lstm = args.is_lstm
 
+    eval_batch_size = 420
+
     pos_files_path = lambda dataset: glob('/specific/netapp5_2/gamir/achiya/Sandisk/new_data/PC3/fails/{0}/phase*.csv'
                                           .format(dataset))
 
@@ -87,7 +89,7 @@ def main(args):
                                                                       args.ignore_string_loc, args.take_last_k_cycles,
                                                                       args.num_workers, pos_replacement=True)
 
-        val_batches_queue, val_workers = create_queue_and_workers(args.debug, val_files, batch_size, n_features,
+        val_batches_queue, val_workers = create_queue_and_workers(args.debug, val_files, eval_batch_size, n_features,
                                                                   pos_files_path('val'), args.oversample_pos,
                                                                   args.ignore_string_loc, args.take_last_k_cycles,
                                                                   args.num_workers, pos_replacement=False)
@@ -184,7 +186,7 @@ def main(args):
         stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm_cell(is_lstm) for _ in range(number_of_layers)])
 #        basic_cell = tf.contrib.rnn.BasicLSTMCell(num_units=r_neuron, activation=tf.nn.relu)
         time = tf.expand_dims(tf.expand_dims(tf.range(args.take_last_k_cycles,dtype=tf.float32),0),2)
-        time = tf.tile(time, [128,1,1])
+        time = tf.tile(time, [128, 1, 1])
         print('UnSpreadX:', x)
         print('Time:', time)
         
@@ -251,14 +253,16 @@ def main(args):
                 ValGenerator.set_queue(val_batches_queue)
 
         print("Optimization Finished!")
-        save_path = '/specific/netapp5_2/gamir/proj/TCRNN/models/{}'.format(args.exp_name)
+        # save_path = '/specific/netapp5_2/gamir/proj/TCRNN/models/{}'.format(args.exp_name)
+        save_path = '/specific/netapp5_2/gamir/achiya/TCRNN/models/{}'.format(args.exp_name)
         os.makedirs(save_path, exist_ok=True)
         ckpt_save_path = saver.save(sess, os.path.join(save_path, 'model.ckpt'))
         print("Saved model to file: {}".format(ckpt_save_path))
 
-        if args.num_test_samples > 0:
+        if args.num_test_samples > 0 or args.num_test_samples == -1:
             test_batches_queue, final_val_workers = \
-                create_queue_and_workers(args.debug, test_files, batch_size, n_features, pos_files_path('test'),
+                create_queue_and_workers(args.debug, test_files, eval_batch_size, n_features,
+                None if args.num_test_samples == -1 else pos_files_path('test'),
                 args.oversample_pos, args.ignore_string_loc, args.take_last_k_cycles,
                 pos_replacement=False, prev_workers=train_workers + val_workers,
                 num_workers=args.num_workers)
@@ -299,8 +303,6 @@ if __name__ == '__main__':
     parser.add_argument('--training_steps', required=True, type=int)
     parser.add_argument('--batch_size', required=True, type=int)
     parser.add_argument('--n_hidden_dim', required=True, type=int)
-    parser.add_argument('--n_layers', required=True, type=int)
-    parser.add_argument('--is_lstm', required=True, type=int)
     parser.add_argument('--experiment', required=True, type=str, choices=
                         ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk'])
 
@@ -326,6 +328,9 @@ if __name__ == '__main__':
     parser.add_argument("--dropout_rate", type=float, default=0)
     parser.add_argument("--num_workers", type=int, default=8)
     parser.add_argument("--neg_weights", type=float, default=1.0)
+    parser.add_argument('--n_layers', type=int, default=1.0)
+    parser.add_argument('--is_lstm', type=int, default=0)
+    parser.add_argument('--eval_on_test', action="store_true")
 
     args = parser.parse_args()
     if args.debug:
