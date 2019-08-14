@@ -15,7 +15,8 @@ def create_lr_fn(schedule):
     return lr_fn
 
 def glorot_init(shape):
-    return tf.truncated_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
+    return tf.random_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
+    #return tf.truncated_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
 
 linear_activation = lambda x: x
 
@@ -32,21 +33,17 @@ def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False
         try:
             _btch, set_size, _input_dim = x.get_shape().as_list()
         except:
-            pass
+            raise ValueError('expected input is 3 dimensional: [batch, max_seq_len, input_dim].')
 
         for i in range(len(arch)-1):
             if reduce_max:
-                # print('shape: ', [-1, set_size, arch[i]])
-                if set_size is not None:
-                    x = tf.reshape(x, [-1, set_size, arch[i]])
-                    xm = tf.reduce_max(x, axis=1, keepdims=True)
-                else:
-                    xm = tf.reduce_max(x, axis=0, keepdims=True)
+                xm = tf.reduce_max(x, axis=1, keepdims=True)
                 x -= xm
             x = tf.reshape(x, [-1, arch[i]])
             if dropout:
                 x = tf.nn.dropout(x, tf.constant(0.5))
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
+            x = tf.reshape(x, [-1, set_size, arch[i+1]])
             x = activation(x)
         return x
 
@@ -116,11 +113,14 @@ class CommRNN(object):
         # Prepare data shape to match `rnn` function requirements
         # Current data input shape: (batch_size, n_steps, n_input)
         # Required shape: 'n_steps' tensors list of shape (batch_size, n_input)
-        
+        print(x) 
+        x_transformed = self.input_model_fn(x)
+        print(x_transformed)
         # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
-        x = tf.unstack(x, seq_max_len, 1)
+        #x = tf.unstack(x, seq_max_len, 1)
+        x = tf.unstack(x_transformed, seq_max_len, 1)
         # # x_transformed = [tf.matmul(_x, tf.transpose(weights['in'])) for _x in x]
-        x_transformed = [self.input_model_fn(_x) for _x in x]
+        #x_transformed = [self.input_model_fn(_x) for _x in x]
         # pre_shp = tf.shape(x)
         # x_transformed = self.input_model_fn(x)
         # post_shp = tf.shape(x)
@@ -134,7 +134,7 @@ class CommRNN(object):
         # outputs, states = tf.nn.dynamic_rnn(
         outputs, states = tf.contrib.rnn.static_rnn(
                                           self.rnn_cell,
-                                          x_transformed,
+                                          x,
                                           dtype=tf.float32,
                                           sequence_length=seqlen,
                                           initial_state=None)

@@ -2,7 +2,9 @@ import os
 import pandas as pd
 import numpy as np
 
-class SanDiskGenerator(object):
+from DataGenerator import DataGenerator
+
+class SanDiskGenerator(DataGenerator):
     def __init__(self, path='../SanDisk/', do_standardize=True, take_last_k_cycles=-1, train=True, n_features=11):
 
         self.path = path

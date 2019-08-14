@@ -174,10 +174,12 @@ train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
 # Evaluate model
 
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+val_accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 tf.summary.scalar('Loss', loss)
 tf.summary.scalar('Cost', cost)
 tf.summary.scalar('Accuracy', accuracy)
+tf.summary.scalar('Validation Accuracy', val_accuracy)
 tf.summary.scalar('Learning Rate', lr)
 
 summary_ops = [cost, accuracy]
@@ -232,9 +234,16 @@ with tf.Session() as sess:
                             "{:.5f}".format(_summary_ops[1]) + \
                             ", learning rate={}".format(learning_rate_fn(step))
 
-            if not commutative_regularization_term is None:
+            if commutative_regularization_term is not None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
             
+            val_data = trainset.get_validation()
+            if val_data is not None:
+                val_acc = sess.run(val_accuracy, feed_dict = {x: val_data[0],
+                                                          y: val_data[1]})
+                summary_print += ", Validation Accuracy={:.5f}".format(val_acc)
+                #summary_print += ", Validation Accuracy=" + "{:.5f}".format(val_acc)
+            print(summary_print)
             # for i in range(len(_pred)):
             #   print('pred {}, target {}, sequence length {}'.format(_pred[i], batch_y[i], batch_seqlen[i]))
 

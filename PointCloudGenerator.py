@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import h5py
 
+from DataGenerator import DataGenerator
 
 def rotate_z(theta, x):
     theta = np.expand_dims(theta, 1)
@@ -35,7 +36,7 @@ def to_onehot(arr, vec_len):
     res[np.arange(len(arr)), arr] = 1.0
     return res
 
-class PointCloudGenerator(object):
+class PointCloudGenerator(DataGenerator):
     def __init__(self, fname='../DeepSets/PointClouds/ModelNet40_cloud_from_edo.h5', down_sample=100, do_standardize=True, do_augmentation=True, train=True):
 
         self.fname = fname

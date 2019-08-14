@@ -1,6 +1,8 @@
 import numpy as np
 
-class MNISTImageGenerator(object):
+from DataGenerator import DataGenerator
+
+class MNISTImageGenerator(DataGenerator):
     """ Generate sequence of data with dynamic length.
     This class generate samples for training:
     - Class 0: linear sequences (i.e. [0, 1, 2, 3,...])
