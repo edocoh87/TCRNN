@@ -20,7 +20,7 @@ def glorot_init(shape):
 
 linear_activation = lambda x: x
 
-def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False):
+def create_input_fn(arch, dropout_rate_ph, activation=tf.nn.tanh, reduce_max=False):
     weights = dict(
                 [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
     )
@@ -28,6 +28,7 @@ def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False
                 #[('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
                 [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
     )
+    #input_dropout_rate_ph = tf.placeholder_with_default(dropout, shape=(), name='input_dropout_rate_ph')
     def _input_fn(x):
         set_size = None
         try:
@@ -40,8 +41,8 @@ def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False
                 xm = tf.reduce_max(x, axis=1, keepdims=True)
                 x -= xm
             x = tf.reshape(x, [-1, arch[i]])
-            if dropout:
-                x = tf.nn.dropout(x, tf.constant(0.5))
+            #if dropout > 0:
+            x = tf.nn.dropout(x, dropout_rate_ph)
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
             x = tf.reshape(x, [-1, set_size, arch[i+1]])
             x = activation(x)
@@ -49,7 +50,7 @@ def create_input_fn(arch, activation=tf.nn.tanh, reduce_max=False, dropout=False
 
     return _input_fn
 
-def create_output_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=False, dropout=False):
+def create_output_fn(arch, dropout_rate_ph, activation=tf.nn.tanh, disable_last_layer_activation=False):
     weights = dict(
                 [('w{}'.format(i), tf.Variable(glorot_init([arch[i+1], arch[i]]))) for i in range(len(arch)-1)]
     )
@@ -57,10 +58,11 @@ def create_output_fn(arch, activation=tf.nn.tanh, disable_last_layer_activation=
                 #[('b{}'.format(i), tf.Variable(glorot_init([arch[i+1]]))) for i in range(len(arch)-1)]
                 [('b{}'.format(i), tf.Variable(tf.zeros([arch[i+1]]))) for i in range(len(arch)-1)]
     )
+    #output_dropout_rate_ph = tf.placeholder_with_default(dropout, shape=(), name='output_dropout_rate_ph')
     def _output_fn(x):
         for i in range(len(arch)-1):
-            if dropout:
-                x = tf.nn.dropout(x, tf.constant(0.5))
+            #if dropout > 0:
+            x = tf.nn.dropout(x, dropout_rate_ph)
             x = tf.matmul(x, weights['w{}'.format(i)], transpose_b=True) + biases['b{}'.format(i)]
             # wheather the last layer is linear or not.
             curr_acivation = linear_activation if \

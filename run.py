@@ -35,6 +35,8 @@ parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
 parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum')
 parser.add_argument('--log_dir', type=str, default='logs/')
+parser.add_argument('--input_dropout_rate', type=float, default=0.0, help="the dropout rate to use in the input model (the default value of 0 will result in no dropout).")
+parser.add_argument('--output_dropout_rate', type=float, default=0.0, help="the dropout rate to use in the output model (the default value of 0 will result in no dropout).")
 
 args = parser.parse_args()
 
@@ -131,8 +133,10 @@ else:
     seqlen = None
 lr = tf.placeholder(tf.float32, [])
 
-input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True)
-output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout=True)
+input_dropout_rate_ph = tf.placeholder_with_default(1-args.input_dropout_rate, shape=(), name='input_dropout_rate_ph')
+output_dropout_rate_ph = tf.placeholder_with_default(1-args.output_dropout_rate, shape=(), name='output_dropout_rate_ph')
+input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True, dropout_rate_ph=input_dropout_rate_ph)
+output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout_rate_ph=output_dropout_rate_ph)
 
 if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
@@ -240,7 +244,9 @@ with tf.Session() as sess:
             val_data = trainset.get_validation()
             if val_data is not None:
                 val_acc = sess.run(val_accuracy, feed_dict = {x: val_data[0],
-                                                          y: val_data[1]})
+                                                              y: val_data[1],
+                                                              input_dropout_rate_ph: 1.0,
+                                                              output_dropout_rate_ph: 1.0,})
                 summary_print += ", Validation Accuracy={:.5f}".format(val_acc)
                 #summary_print += ", Validation Accuracy=" + "{:.5f}".format(val_acc)
             print(summary_print)
@@ -253,7 +259,11 @@ with tf.Session() as sess:
     # Calculate accuracy
     if use_seqlen:
         test_data, test_label, test_seqlen = testset.next()
-        test_feed_dict = {x: test_data, y: test_label, seqlen: test_seqlen}
+        test_feed_dict = {x: test_data,
+                          y: test_label,
+                          seqlen: test_seqlen,
+                          input_dropout_rate_ph: 1.0,
+                          output_dropout_rate_ph: 1.0,}
     else:
         test_data, test_label = testset.next()
         test_feed_dict = {x: test_data, y: test_label}
