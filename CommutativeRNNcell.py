@@ -46,7 +46,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         A = array_ops.transpose(self._kernel_out)
         return A, W, THETA
 
-    def get_comm_regularizer(self, epsilon=1e-4):
+    def get_comm_regularizer(self, epsilon=1e-3):
         def G(U, V, norm_matrix):
             inner_prod_mat = tf.matmul(U, V, transpose_b=True)
             cos_alpha = tf.divide(inner_prod_mat, norm_matrix + epsilon)
@@ -54,15 +54,23 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
 
         A, W, THETA = self.get_weights()
+        print('A: ', A)
+        print('W: ', W)
+        print('THETA: ', THETA)
+        # A = tf.Print(_A, [_A, W, THETA], "weights:", summarize=100)
         Q = tf.matmul(A, A, transpose_a=True)
         U = tf.concat([THETA, W], axis=1)
         V = tf.concat([W, THETA], axis=1)
-        
+        print('U: ', U)
         # the norms of row i of U (they're the same for V)
         norm_per_row = tf.norm(U, axis=1, keepdims=True)
+        # norm_per_row = tf.Print(_norm_per_row, [_norm_per_row], "norm_per_row: ", summarize=100)
+        print('norm_per_row: ', norm_per_row)
         
         # norm_matrix_ij = norm(u_i)*norm(u_j)
         norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+        
+        print('norm_matrix: ', norm_matrix)
 
         UU = G(U, U, norm_matrix)
         UV = G(U, V, norm_matrix)
@@ -76,15 +84,33 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         
         self.input_depth = inputs_shape[-1]
         print('inputs_shape {}'.format(self.input_depth))
+        init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
+        for i in range(self._num_units):
+            init_arr[i, 3*i] = 1
+            init_arr[i+self._num_units, 3*i] = -1
+            init_arr[i+self._num_units, 3*i+1] = 1
+            init_arr[i+self._num_units, 3*i+2] = -1
         self._kernel = self.add_variable(
             "kernel",
+            # shape=[self.input_depth + self._num_units, self._computation_dim])
+            trainable=False,
             shape=[self.input_depth + self._num_units, self._computation_dim],
-            initializer=tf.initializers.identity(dtype=self.dtype))
+            initializer=tf.constant_initializer(init_arr))
+            # initializer=tf.initializers.identity(dtype=self.dtype))
+        assert self._num_units*3 == self._computation_dim, "max aggregation."
+        out_init_arr = np.zeros((self._computation_dim, self._num_units))
+        for i in range(self._num_units):
+            out_init_arr[3*i, i] = 1
+            out_init_arr[3*i+1, i] = 1
+            out_init_arr[3*i+2, i] = -1
         # the output weights don't exist in the standard implementation.
         self._kernel_out = self.add_variable(
             "kernel_out",
+            # shape=[self._computation_dim, self._num_units])
+            trainable=False,
             shape=[self._computation_dim, self._num_units],
-            initializer=tf.initializers.identity(dtype=self.dtype))
+            initializer=tf.constant_initializer(out_init_arr))
+            # initializer=tf.initializers.identity(dtype=self.dtype))
         # self._bias = self.add_variable(
         #     _BIAS_VARIABLE_NAME,
         #     shape=[self._num_units],
@@ -95,7 +121,10 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
     def call(self, inputs, state):
         """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-
+        # print('inputs: ', inputs)
+        # print('state: ', state)
+        # print('concatenated: ', array_ops.concat([inputs, state], 1))
+        # print('weights: ', self._kernel)
         gate_inputs = math_ops.matmul(
             array_ops.concat([inputs, state], 1), self._kernel)
         # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
