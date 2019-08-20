@@ -1,3 +1,6 @@
+# Note! - this repo contains work in progress.
+
+
 # Example of running DeepSet for 'img-sum' experiment.
 ```console
 edocohen@rack-gamir-g03:~$ python run.py \
