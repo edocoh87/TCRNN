@@ -8,6 +8,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
     def __init__(self,
                 num_units,
                 computation_dim,
+                initialize_to_max=False,
                 activation=None,
                 reuse=None,
                 name=None,
@@ -25,6 +26,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
         self._num_units = num_units
         self._computation_dim = computation_dim
+        self.initialize_to_max = initialize_to_max
         if activation:
             self._activation = activations.get(activation)
         else:
@@ -54,23 +56,23 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
 
         A, W, THETA = self.get_weights()
-        print('A: ', A)
-        print('W: ', W)
-        print('THETA: ', THETA)
+        # print('A: ', A)
+        # print('W: ', W)
+        # print('THETA: ', THETA)
         # A = tf.Print(_A, [_A, W, THETA], "weights:", summarize=100)
         Q = tf.matmul(A, A, transpose_a=True)
         U = tf.concat([THETA, W], axis=1)
         V = tf.concat([W, THETA], axis=1)
-        print('U: ', U)
+        # print('U: ', U)
         # the norms of row i of U (they're the same for V)
         norm_per_row = tf.norm(U, axis=1, keepdims=True)
         # norm_per_row = tf.Print(_norm_per_row, [_norm_per_row], "norm_per_row: ", summarize=100)
-        print('norm_per_row: ', norm_per_row)
+        # print('norm_per_row: ', norm_per_row)
         
         # norm_matrix_ij = norm(u_i)*norm(u_j)
         norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
         
-        print('norm_matrix: ', norm_matrix)
+        # print('norm_matrix: ', norm_matrix)
 
         UU = G(U, U, norm_matrix)
         UV = G(U, V, norm_matrix)
@@ -83,33 +85,46 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         #         #                         % str(inputs_shape))
         
         self.input_depth = inputs_shape[-1]
-        print('inputs_shape {}'.format(self.input_depth))
-        init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
-        for i in range(self._num_units):
-            init_arr[i, 3*i] = 1
-            init_arr[i+self._num_units, 3*i] = -1
-            init_arr[i+self._num_units, 3*i+1] = 1
-            init_arr[i+self._num_units, 3*i+2] = -1
+        # print('inputs_shape {}'.format(self.input_depth))
+        if self.initialize_to_max:
+            assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
+            print('num of units: ', self._num_units)
+            assert self._computation_dim >= 3*self._num_units, '_computation_dim must be at least x3 larger than _num_units.'
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
+            for i in range(self._num_units):
+                kernel_init_arr[i, 3*i] = 1
+                kernel_init_arr[i+self._num_units, 3*i] = -1
+                kernel_init_arr[i+self._num_units, 3*i+1] = 1
+                kernel_init_arr[i+self._num_units, 3*i+2] = -1
+            
+            kernel_out_init_arr = np.zeros((self._computation_dim, self._num_units))
+            for i in range(self._num_units):
+                kernel_out_init_arr[3*i, i] = 1
+                kernel_out_init_arr[3*i+1, i] = 1
+                kernel_out_init_arr[3*i+2, i] = -1
+        else:
+            # xavier initialization:
+            kernel_init_arr = np.random.rand((self.input_depth + self._num_units, 
+                self._computation_dim))*np.sqrt(1 / (self.input_depth + self._num_units + self._computation_dim))
+
+            kernel_out_init_arr = np.random.rand((self._computation_dim,
+                self._num_units))*np.sqrt(1 / (self._num_units + self._computation_dim))
+
         self._kernel = self.add_variable(
             "kernel",
             # shape=[self.input_depth + self._num_units, self._computation_dim])
-            trainable=False,
+            # trainable=False,
             shape=[self.input_depth + self._num_units, self._computation_dim],
-            initializer=tf.constant_initializer(init_arr))
+            initializer=tf.constant_initializer(kernel_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
-        assert self._num_units*3 == self._computation_dim, "max aggregation."
-        out_init_arr = np.zeros((self._computation_dim, self._num_units))
-        for i in range(self._num_units):
-            out_init_arr[3*i, i] = 1
-            out_init_arr[3*i+1, i] = 1
-            out_init_arr[3*i+2, i] = -1
+        
         # the output weights don't exist in the standard implementation.
         self._kernel_out = self.add_variable(
             "kernel_out",
             # shape=[self._computation_dim, self._num_units])
-            trainable=False,
+            # trainable=False,
             shape=[self._computation_dim, self._num_units],
-            initializer=tf.constant_initializer(out_init_arr))
+            initializer=tf.constant_initializer(kernel_out_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
         # self._bias = self.add_variable(
         #     _BIAS_VARIABLE_NAME,

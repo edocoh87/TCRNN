@@ -98,16 +98,22 @@ class CommRNN(object):
     def __init__(self,
                  n_hidden_dim,
                  n_computation_dim,
+                 initialize_to_max,
                  activation,
                  input_model_fn,
                  output_model_fn):
         
         self.n_hidden_dim = n_hidden_dim
         self.n_computation_dim = n_computation_dim
+        self.initialize_to_max = initialize_to_max
         self.activation = activation
         self.input_model_fn = input_model_fn
         self.output_model_fn = output_model_fn
-        self.rnn_cell = CommutativeRNNcell(self.n_hidden_dim, self.n_computation_dim, self.activation)
+        self.rnn_cell = CommutativeRNNcell(
+                                num_units = self.n_hidden_dim,
+                                computation_dim = self.n_computation_dim,
+                                initialize_to_max = self.initialize_to_max,
+                                activation = self.activation)
 
     def build_rnn(self, x, seq_max_len, seqlen=None):
         # def dynamicRNN(x, seqlen, cell, input_model_fn, output_model_fn, seq_max_len, n_hidden, initial_state=None):
@@ -115,9 +121,9 @@ class CommRNN(object):
         # Prepare data shape to match `rnn` function requirements
         # Current data input shape: (batch_size, n_steps, n_input)
         # Required shape: 'n_steps' tensors list of shape (batch_size, n_input)
-        print(x) 
+        # print(x) 
         x_transformed = self.input_model_fn(x)
-        print(x_transformed)
+        # print(x_transformed)
         # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
         #x = tf.unstack(x, seq_max_len, 1)
         x = tf.unstack(x_transformed, seq_max_len, 1)

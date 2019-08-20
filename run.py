@@ -29,14 +29,18 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 # Optional Arguments
 ######################
 parser.add_argument('--n_computation_dim', type=int, default=0)
+parser.add_argument('--initialize_to_max', type=bool, default=False)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
-parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum')
+parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum',
+            help="the aggregation mode to use (relevant only for DeepSet architecture.")
 parser.add_argument('--log_dir', type=str, default='logs/')
-parser.add_argument('--input_dropout_rate', type=float, default=0.0, help="the dropout rate to use in the input model (the default value of 0 will result in no dropout).")
-parser.add_argument('--output_dropout_rate', type=float, default=0.0, help="the dropout rate to use in the output model (the default value of 0 will result in no dropout).")
+parser.add_argument('--input_dropout_rate', type=float, default=0.0,
+            help="the dropout rate to use in the input model (the default value of 0 will result in no dropout).")
+parser.add_argument('--output_dropout_rate', type=float, default=0.0,
+            help="the dropout rate to use in the output model (the default value of 0 will result in no dropout).")
 
 args = parser.parse_args()
 
@@ -135,13 +139,16 @@ lr = tf.placeholder(tf.float32, [])
 
 input_dropout_rate_ph = tf.placeholder_with_default(1-args.input_dropout_rate, shape=(), name='input_dropout_rate_ph')
 output_dropout_rate_ph = tf.placeholder_with_default(1-args.output_dropout_rate, shape=(), name='output_dropout_rate_ph')
-input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True, dropout_rate_ph=input_dropout_rate_ph)
-output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh, disable_last_layer_activation=True, dropout_rate_ph=output_dropout_rate_ph)
+input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True,
+                                dropout_rate_ph=input_dropout_rate_ph)
+output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh,
+                                disable_last_layer_activation=True, dropout_rate_ph=output_dropout_rate_ph)
 
 if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
                 n_hidden_dim=n_hidden_dim,
                 n_computation_dim=n_computation_dim,
+                initialize_to_max=args.initialize_to_max,
                 activation=tf.nn.relu,
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn)
