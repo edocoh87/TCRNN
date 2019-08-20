@@ -30,6 +30,7 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 parser.add_argument('--n_computation_dim', type=int, default=0)
 parser.add_argument('--initialize_to_max', type=bool, default=False)
+parser.add_argument('--trainable_rnn', type=bool, default=True)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
@@ -148,6 +149,7 @@ if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
                 n_hidden_dim=n_hidden_dim,
                 n_computation_dim=n_computation_dim,
+                trainable=args.trainable_rnn,
                 initialize_to_max=args.initialize_to_max,
                 activation=tf.nn.relu,
                 input_model_fn=input_model_fn,

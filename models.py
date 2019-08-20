@@ -99,6 +99,7 @@ class CommRNN(object):
                  n_hidden_dim,
                  n_computation_dim,
                  initialize_to_max,
+                 trainable,
                  activation,
                  input_model_fn,
                  output_model_fn):
@@ -106,6 +107,7 @@ class CommRNN(object):
         self.n_hidden_dim = n_hidden_dim
         self.n_computation_dim = n_computation_dim
         self.initialize_to_max = initialize_to_max
+        self.trainable = trainable
         self.activation = activation
         self.input_model_fn = input_model_fn
         self.output_model_fn = output_model_fn
@@ -113,6 +115,7 @@ class CommRNN(object):
                                 num_units = self.n_hidden_dim,
                                 computation_dim = self.n_computation_dim,
                                 initialize_to_max = self.initialize_to_max,
+                                trainable = self.trainable,
                                 activation = self.activation)
 
     def build_rnn(self, x, seq_max_len, seqlen=None):

@@ -9,6 +9,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 num_units,
                 computation_dim,
                 initialize_to_max=False,
+                trainable=True,
                 activation=None,
                 reuse=None,
                 name=None,
@@ -26,6 +27,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
         self._num_units = num_units
         self._computation_dim = computation_dim
+        self.trainable = trainable
         self.initialize_to_max = initialize_to_max
         if activation:
             self._activation = activations.get(activation)
@@ -104,16 +106,16 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_out_init_arr[3*i+2, i] = -1
         else:
             # xavier initialization:
-            kernel_init_arr = np.random.rand((self.input_depth + self._num_units, 
-                self._computation_dim))*np.sqrt(1 / (self.input_depth + self._num_units + self._computation_dim))
+            kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
+                self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))
 
-            kernel_out_init_arr = np.random.rand((self._computation_dim,
-                self._num_units))*np.sqrt(1 / (self._num_units + self._computation_dim))
+            kernel_out_init_arr = np.random.rand(self._computation_dim,
+                self._num_units)*np.sqrt(1.0 / int(self._num_units + self._computation_dim))
 
         self._kernel = self.add_variable(
             "kernel",
             # shape=[self.input_depth + self._num_units, self._computation_dim])
-            # trainable=False,
+            trainable=self.trainable,
             shape=[self.input_depth + self._num_units, self._computation_dim],
             initializer=tf.constant_initializer(kernel_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
@@ -122,7 +124,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         self._kernel_out = self.add_variable(
             "kernel_out",
             # shape=[self._computation_dim, self._num_units])
-            # trainable=False,
+            trainable=self.trainable,
             shape=[self._computation_dim, self._num_units],
             initializer=tf.constant_initializer(kernel_out_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
