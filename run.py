@@ -29,12 +29,15 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 # Optional Arguments
 ######################
 parser.add_argument('--n_computation_dim', type=int, default=0)
-parser.add_argument('--initialize_to_max', type=bool, default=False)
-parser.add_argument('--trainable_rnn', type=bool, default=True)
+parser.add_argument('--initialize_to_max', action='store_true')
+parser.add_argument('--non_trainable_rnn', action='store_false')
+parser.add_argument('--save_model_to_path', type=str, default=None)
+parser.add_argument('--restore_from_path', type=str, default=None)
+# parser.add_argument('--trainable_rnn', type=bool, default=True)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
-parser.add_argument('--lr_schedule', type=str, default="[(np.inf, 1e-3)]")
+parser.add_argument('--lr_schedule', type=str, default="[(np.inf, (1e-3, 1.0))]")
 parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum',
             help="the aggregation mode to use (relevant only for DeepSet architecture.")
 parser.add_argument('--log_dir', type=str, default='logs/')
@@ -137,6 +140,7 @@ if use_seqlen:
 else:
     seqlen = None
 lr = tf.placeholder(tf.float32, [])
+rnn_lr_ph = tf.placeholder(tf.float32, shape=[], name='rnn_lr_ph')
 
 input_dropout_rate_ph = tf.placeholder_with_default(1-args.input_dropout_rate, shape=(), name='input_dropout_rate_ph')
 output_dropout_rate_ph = tf.placeholder_with_default(1-args.output_dropout_rate, shape=(), name='output_dropout_rate_ph')
@@ -149,7 +153,7 @@ if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
                 n_hidden_dim=n_hidden_dim,
                 n_computation_dim=n_computation_dim,
-                trainable=args.trainable_rnn,
+                trainable=args.non_trainable_rnn,
                 initialize_to_max=args.initialize_to_max,
                 activation=tf.nn.relu,
                 input_model_fn=input_model_fn,
@@ -182,7 +186,7 @@ cost = loss if commutative_regularization_term is None else \
 # cost = loss + expct_comm_reg_weight*commutative_regularization_term
 train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
 # optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
-# optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+# train_op = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(cost)
 
 # Evaluate model
 
@@ -211,26 +215,35 @@ with open(os.path.join(log_dir_path, 'config.json'), 'w') as f:
 # Initialize the variables (i.e. assign their default value)
 init = tf.global_variables_initializer()
 
+saver = tf.train.Saver()
+
 # Start training
 with tf.Session() as sess:
+    sess.run(init)
+    if args.restore_from_path is not None:
+        saver.restore(sess, args.restore_from_path)
+        print("Model restored from: '{}'".format(args.restore_from_path))
     train_writer = tf.summary.FileWriter(log_dir_path, sess.graph)
     # Run the initializer
-    sess.run(init)
     training_results = []
     for step in range(1, training_steps + 1):
         # batch_x, batch_y, batch_seqlen = trainset.next(batch_size)
         if use_seqlen:
             batch_x, batch_y, batch_seqlen = trainset.next(batch_size)
-            curr_feed_dict = {x: batch_x,
-                              y: batch_y,
-                              seqlen: batch_seqlen,
-                              lr: learning_rate_fn(step)}
+            curr_feed_dict = { seqlen: batch_seqlen }
         else:
             batch_x, batch_y = trainset.next(batch_size)
-            curr_feed_dict = {x: batch_x,
-                              y: batch_y,
-                              lr: learning_rate_fn(step)}
-
+            curr_feed_dict = { }
+        
+        
+        _lr, _rnn_lr_mlt = learning_rate_fn(step)
+        curr_feed_dict.update({ x: batch_x,
+                                y: batch_y,
+                                lr: _lr,
+                                rnn_lr_ph: _rnn_lr_mlt, })
+                                # rnn_lr_ph: 0.0, })
+        
+        
         
         # Run optimization op (backprop)
         _ = sess.run([train_op], feed_dict=curr_feed_dict)
@@ -245,7 +258,7 @@ with tf.Session() as sess:
             summary_print = "Step " + str(step) + ", Minibatch Loss=" + \
                             "{:.6f}".format(_summary_ops[0]) + ", Training Accuracy=" + \
                             "{:.5f}".format(_summary_ops[1]) + \
-                            ", learning rate={}".format(learning_rate_fn(step))
+                            ", lr={}".format((_lr, _rnn_lr_mlt))
 
             if commutative_regularization_term is not None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
@@ -264,6 +277,10 @@ with tf.Session() as sess:
 
     train_writer.close()
     print("Optimization Finished!")
+    
+    if args.save_model_to_path is not None:
+        save_path = saver.save(sess, args.save_model_to_path)
+        print("Model saved in path: {}".format(save_path))
 
     # Calculate accuracy
     if use_seqlen:

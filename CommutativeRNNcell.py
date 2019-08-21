@@ -112,7 +112,19 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             kernel_out_init_arr = np.random.rand(self._computation_dim,
                 self._num_units)*np.sqrt(1.0 / int(self._num_units + self._computation_dim))
 
-        self._kernel = self.add_variable(
+        
+        def lr_mult(lr_ph):
+            @tf.custom_gradient
+            def _lr_mult(x):
+                def grad(dy):
+                    return dy * lr_ph * tf.ones_like(x)
+                return x, grad
+            return _lr_mult
+
+        # # _lr_ph = tf.placeholder(tf.float32, shape=[], name='rnn_lr_ph')
+        # _lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')    
+
+        self.__kernel = self.add_variable(
             "kernel",
             # shape=[self.input_depth + self._num_units, self._computation_dim])
             trainable=self.trainable,
@@ -121,12 +133,16 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # initializer=tf.initializers.identity(dtype=self.dtype))
         
         # the output weights don't exist in the standard implementation.
-        self._kernel_out = self.add_variable(
+        self.__kernel_out = self.add_variable(
             "kernel_out",
             # shape=[self._computation_dim, self._num_units])
             trainable=self.trainable,
             shape=[self._computation_dim, self._num_units],
             initializer=tf.constant_initializer(kernel_out_init_arr))
+
+        rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
+        self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
+        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
             # initializer=tf.initializers.identity(dtype=self.dtype))
         # self._bias = self.add_variable(
         #     _BIAS_VARIABLE_NAME,
@@ -144,6 +160,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # print('weights: ', self._kernel)
         gate_inputs = math_ops.matmul(
             array_ops.concat([inputs, state], 1), self._kernel)
+
         # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
         gate_outputs = self._activation(gate_inputs)
         
