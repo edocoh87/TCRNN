@@ -4,7 +4,7 @@ from tensorflow.python.keras import activations
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
-RAND_BOUND = 1e-5
+RAND_BOUND = 1e-4
 
 class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
     def __init__(self,
@@ -95,16 +95,16 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             print('num of units: ', self._num_units)
             assert self._computation_dim >= 3*self._num_units, '_computation_dim must be at least x3 larger than _num_units.'
             
-            # kernel_init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
-            kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
+            # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
             for i in range(self._num_units):
                 kernel_init_arr[i, 3*i] = 1
                 kernel_init_arr[i+self._num_units, 3*i] = -1
                 kernel_init_arr[i+self._num_units, 3*i+1] = 1
                 kernel_init_arr[i+self._num_units, 3*i+2] = -1
             
-            # kernel_out_init_arr = np.zeros((self._computation_dim, self._num_units))
-            kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            kernel_out_init_arr = np.zeros((self._computation_dim, self._num_units))
+            # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
             for i in range(self._num_units):
                 kernel_out_init_arr[3*i, i] = 1
                 kernel_out_init_arr[3*i+1, i] = 1
@@ -170,5 +170,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         gate_outputs = self._activation(gate_inputs)
         
         # this is not in the standard rnn cell and the reason we had to implement a new cell..
-        output = math_ops.matmul(gate_outputs, self._kernel_out)
+        
+        #output = math_ops.matmul(gate_outputs, self._kernel_out)
+        output = tf.maximum(inputs, state)
         return output, output

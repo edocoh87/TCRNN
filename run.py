@@ -12,6 +12,8 @@ from SanDiskGenerator import SanDiskGenerator
 
 import models
 
+np.random.seed(0)
+
 ######################
 # Required Arguments
 ######################
@@ -219,6 +221,7 @@ saver = tf.train.Saver()
 
 # Start training
 with tf.Session() as sess:
+    tf.set_random_seed(0)
     sess.run(init)
     if args.restore_from_path is not None:
         saver.restore(sess, args.restore_from_path)
