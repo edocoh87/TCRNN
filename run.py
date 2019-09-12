@@ -30,7 +30,7 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 # Optional Arguments
 ######################
-parser.add_argument('--n_computation_dim', type=int, default=0)
+parser.add_argument('--n_computation_dim', type=str, default=None)
 parser.add_argument('--initialize_to_max', action='store_true')
 parser.add_argument('--non_trainable_rnn', action='store_false')
 parser.add_argument('--save_model_to_path', type=str, default=None)
@@ -116,9 +116,11 @@ elif args.experiment == 'san-disk':
     use_seqlen = True
     eval_on_varying_seq = False
 
-n_computation_dim = args.n_computation_dim
-if n_computation_dim == 0:
-    n_computation_dim = n_hidden_dim
+if args.n_computation_dim is None:
+    n_computation_dim = [n_hidden_dim]
+else:
+    n_computation_dim = eval(args.n_computation_dim)
+
 
 input_model_arch = [n_input_dim] + eval(args.input_model_arch) + [n_hidden_dim]
 output_model_arch = [n_hidden_dim] + eval(args.output_model_arch) + [n_output_dim]

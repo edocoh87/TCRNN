@@ -108,7 +108,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # self.input_spec = input_spec.InputSpec(ndim=2)
 
         self._num_units = num_units
-        self._computation_dim = computation_dim
+        self._computation_dim = computation_dim + [self._num_units]
         self.trainable = trainable
         self.initialize_to_max = initialize_to_max
         if activation:
@@ -173,9 +173,12 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         if self.initialize_to_max:
             assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
             print('num of units: ', self._num_units)
-            assert self._computation_dim >= 3*self._num_units, '_computation_dim must be at least x3 larger than _num_units.'
+            print('comp dim: ', self._computation_dim)
+            assert self._computation_dim[0] >= 3*self._num_units, '_computation_dim[0] must be at least x3 larger than _num_units to implement maximum.'
+            assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement maximum.'
             
-            kernel_init_arr = np.zeros((self.input_depth + self._num_units, self._computation_dim))
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+                                                    self._computation_dim[0]))
             # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
             # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
             for i in range(self._num_units):
@@ -184,7 +187,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_init_arr[i+self._num_units, 3*i+1] = 1
                 kernel_init_arr[i+self._num_units, 3*i+2] = -1
             
-            kernel_out_init_arr = np.zeros((self._computation_dim, self._num_units))
+            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
             # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
             # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
             for i in range(self._num_units):
@@ -195,15 +198,17 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
             #    self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))
-            kernel_init_arr = np.random.normal(scale=1e-4, size=(self.input_depth + self._num_units, self._computation_dim))
+            kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
             #kernel_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim)), 
 	    #		size=(self.input_depth + self._num_units, self._computation_dim))
 
             # kernel_out_init_arr = np.random.rand(self._computation_dim,
-            kernel_out_init_arr = np.random.normal(scale=1e-4, size=(self._computation_dim, self._num_units))
+            kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
             #kernel_out_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self._num_units + self._computation_dim)),
 	    #	 			size=(self._computation_dim, self._num_units))
 
+        kernels_init_arr = [np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[i-1], self._computation_dim[i]))
+                                                                                    for i in range(2, len(self._computation_dim))]
         
         def lr_mult(lr_ph):
             @tf.custom_gradient
@@ -220,7 +225,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             "kernel",
             # shape=[self.input_depth + self._num_units, self._computation_dim])
             trainable=self.trainable,
-            shape=[self.input_depth + self._num_units, self._computation_dim],
+            shape=[self.input_depth + self._num_units, self._computation_dim[0]],
             initializer=tf.constant_initializer(kernel_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
         
@@ -229,19 +234,30 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             "kernel_out",
             # shape=[self._computation_dim, self._num_units])
             trainable=self.trainable,
-            shape=[self._computation_dim, self._num_units],
+            shape=[self._computation_dim[0], self._computation_dim[1]],
             initializer=tf.constant_initializer(kernel_out_init_arr))
 
-        rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
-        self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
-        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
-            # initializer=tf.initializers.identity(dtype=self.dtype))
+
+        self.__kernels = [self.add_variable(
+            "kernel_{}".format(i+1),
+            # shape=[self._computation_dim, self._num_units])
+            trainable=self.trainable,
+            shape=[self._computation_dim[i-1], self._computation_dim[i]],
+            initializer=tf.constant_initializer(kernels_init_arr[i-2])) for i in range(2, len(self._computation_dim))]
+
         # self._bias = self.add_variable(
         #     _BIAS_VARIABLE_NAME,
         #     shape=[self._num_units],
         #     initializer=init_ops.zeros_initializer(dtype=self.dtype))
-        
 
+        rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
+        self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
+        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
+
+        # self._kernels = [lr_mult(rnn_lr_ph)(_ker) for _ker in self.__kernels]
+        self._kernels = self.__kernels
+            # initializer=tf.initializers.identity(dtype=self.dtype))
+        
         self.built = True
 
     def call(self, inputs, state):
@@ -260,8 +276,19 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # this is not in the standard rnn cell and the reason we had to implement a new cell..
         
         output = math_ops.matmul(gate_outputs, self._kernel_out)
+
+        _inputs = output
+        for i in range(len(self._kernels)):
+            _gate_inputs = math_ops.matmul(_inputs, self._kernels[i])
+            if i < len(self._kernels)-1:
+                _inputs = self._activation(_gate_inputs)
+            else:
+                outputs = _gate_inputs
+            
+        
         # output = tf.maximum(inputs, state)
         return output, output
+        # return _output, _output
 
     def zero_state(self, batch_size, dtype):
         """Return zero-filled state tensor(s).
