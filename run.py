@@ -199,7 +199,7 @@ val_accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 tf.summary.scalar('Loss', loss)
 tf.summary.scalar('Cost', cost)
-tf.summary.scalar('Accuracy', accuracy)
+tf.summary.scalar('Train Accuracy', accuracy)
 tf.summary.scalar('Validation Accuracy', val_accuracy)
 tf.summary.scalar('Learning Rate', lr)
 
@@ -212,7 +212,13 @@ merged = tf.summary.merge_all()
 summary_ops = summary_ops + [merged]
 # making directory to save tensorboard files.
 log_dir_path = os.path.join(args.log_dir, dir_name)
-os.mkdir(log_dir_path)
+if not os.path.exists(log_dir_path):
+    os.makedirs(log_dir_path)
+else:
+    log_dir_path += '_2'
+    os.makedirs(log_dir_path)
+
+#os.mkdir(log_dir_path)
 with open(os.path.join(log_dir_path, 'config.json'), 'w') as f:
     f.write(json.dumps(vars(args), indent=4))
 

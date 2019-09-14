@@ -12,7 +12,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 1e-3
+RAND_BOUND = 1e-2
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -132,7 +132,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         A = array_ops.transpose(self._kernel_out)
         return A, W, THETA
 
-    def get_comm_regularizer(self, epsilon=1e-4):
+    def get_comm_regularizer(self, epsilon=1e-5):
         def G(U, V, norm_matrix):
             inner_prod_mat = tf.matmul(U, V, transpose_b=True)
             cos_alpha = tf.divide(inner_prod_mat, norm_matrix + epsilon)
