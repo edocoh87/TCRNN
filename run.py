@@ -188,7 +188,12 @@ cost = loss if commutative_regularization_term is None else \
                 loss + expct_comm_reg_weight*commutative_regularization_term
                     
 # cost = loss + expct_comm_reg_weight*commutative_regularization_term
-train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
+# train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
+train_op = tf.contrib.opt.AdamWOptimizer(
+                                weight_decay=1e-7,
+                                epsilon=1e-3,
+                                learning_rate=lr
+                            ).minimize(cost)
 # optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
 # train_op = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(cost)
 
