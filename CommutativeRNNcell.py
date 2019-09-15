@@ -90,6 +90,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
     def __init__(self,
                 num_units,
                 computation_dim,
+                dropout_rate_ph,
                 initialize_to_max=False,
                 trainable=True,
                 activation=None,
@@ -109,6 +110,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
         self._num_units = num_units
         self._computation_dim = computation_dim + [self._num_units]
+        self.dropout_rate_ph = dropout_rate_ph
         self.trainable = trainable
         self.initialize_to_max = initialize_to_max
         if activation:
@@ -267,18 +269,20 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # print('concatenated: ', array_ops.concat([inputs, state], 1))
         # print('weights: ', self._kernel)
         # _state = tf.Print(state, [state], "state: ", summarize=100)
-        gate_inputs = math_ops.matmul(
-            array_ops.concat([inputs, state], 1), self._kernel)
+        input_and_state = array_ops.concat([inputs, state], 1)
+        input_and_state = tf.nn.dropout(input_and_state, self.dropout_rate_ph)
+        gate_inputs = math_ops.matmul(input_and_state, self._kernel)
         
         # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
         gate_outputs = self._activation(gate_inputs)
         
         # this is not in the standard rnn cell and the reason we had to implement a new cell..
-        
+        gate_outputs = tf.nn.dropout(gate_outputs, self.dropout_rate_ph)
         output = math_ops.matmul(gate_outputs, self._kernel_out)
 
         _inputs = output
         for i in range(len(self._kernels)):
+            _inputs = tf.nn.dropout(_inputs, self.dropout_rate_ph)
             _gate_inputs = math_ops.matmul(_inputs, self._kernels[i])
             if i < len(self._kernels)-1:
                 _inputs = self._activation(_gate_inputs)

@@ -150,6 +150,8 @@ rnn_lr_ph = tf.placeholder(tf.float32, shape=[], name='rnn_lr_ph')
 
 input_dropout_rate_ph = tf.placeholder_with_default(1-args.input_dropout_rate, shape=(), name='input_dropout_rate_ph')
 output_dropout_rate_ph = tf.placeholder_with_default(1-args.output_dropout_rate, shape=(), name='output_dropout_rate_ph')
+rnn_dropout_rate_ph = tf.placeholder_with_default(1-args.rnn_dropout_rate, shape=(), name='rnn_dropout_rate_ph')
+
 input_model_fn = models.create_input_fn(arch=input_model_arch, activation=tf.nn.tanh, reduce_max=True,
                                 dropout_rate_ph=input_dropout_rate_ph)
 output_model_fn = models.create_output_fn(arch=output_model_arch, activation=tf.nn.tanh,
@@ -159,6 +161,7 @@ if ARCHITECTURE == 'CommRNN':
     model = models.CommRNN(
                 n_hidden_dim=n_hidden_dim,
                 n_computation_dim=n_computation_dim,
+                dropout_rate_ph=rnn_dropout_rate_ph,
                 trainable=args.non_trainable_rnn,
                 initialize_to_max=args.initialize_to_max,
                 activation=tf.nn.relu,
