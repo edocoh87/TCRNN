@@ -48,6 +48,7 @@ class PointCloudGenerator(DataGenerator):
         else:
             prefix = 'test_'
             make_val_data = False
+            do_augmentation = False
 
         with h5py.File(fname, 'r') as f:
             self.data = np.array(f[prefix + 'cloud'])

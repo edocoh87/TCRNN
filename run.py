@@ -12,7 +12,7 @@ from SanDiskGenerator import SanDiskGenerator
 
 import models
 
-np.random.seed(0)
+#np.random.seed(0)
 
 ######################
 # Required Arguments
@@ -47,6 +47,8 @@ parser.add_argument('--input_dropout_rate', type=float, default=0.0,
             help="the dropout rate to use in the input model (the default value of 0 will result in no dropout).")
 parser.add_argument('--output_dropout_rate', type=float, default=0.0,
             help="the dropout rate to use in the output model (the default value of 0 will result in no dropout).")
+parser.add_argument('--rnn_dropout_rate', type=float, default=0.0,
+            help="the dropout rate to use in the rnn model (the default value of 0 will result in no dropout).")
 
 args = parser.parse_args()
 
@@ -189,11 +191,15 @@ cost = loss if commutative_regularization_term is None else \
                     
 # cost = loss + expct_comm_reg_weight*commutative_regularization_term
 # train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
-train_op = tf.contrib.opt.AdamWOptimizer(
+optimizer = tf.contrib.opt.AdamWOptimizer(
                                 weight_decay=1e-7,
                                 epsilon=1e-3,
-                                learning_rate=lr
-                            ).minimize(cost)
+                                learning_rate=lr)
+                            #).minimize(cost)
+gradients, variables = zip(*optimizer.compute_gradients(cost))
+gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
+train_op = optimizer.apply_gradients(zip(gradients, variables))
+
 # optimizer = tf.train.AdagradOptimizer(learning_rate=learning_rate).minimize(cost)
 # train_op = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(cost)
 
