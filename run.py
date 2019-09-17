@@ -293,7 +293,8 @@ with tf.Session() as sess:
                 val_acc = sess.run(val_accuracy, feed_dict = {x: val_data[0],
                                                               y: val_data[1],
                                                               input_dropout_rate_ph: 1.0,
-                                                              output_dropout_rate_ph: 1.0,})
+                                                              output_dropout_rate_ph: 1.0,
+                                                              rnn_dropout_rate_ph: 1.0,})
                 summary_print += ", Validation Accuracy={:.5f}".format(val_acc)
                 #summary_print += ", Validation Accuracy=" + "{:.5f}".format(val_acc)
             print(summary_print)
@@ -312,13 +313,14 @@ with tf.Session() as sess:
         test_data, test_label, test_seqlen = testset.next()
         test_feed_dict = {x: test_data,
                           y: test_label,
-                          seqlen: test_seqlen,
-                          input_dropout_rate_ph: 1.0,
-                          output_dropout_rate_ph: 1.0,}
+                          seqlen: test_seqlen}
     else:
         test_data, test_label = testset.next()
         test_feed_dict = {x: test_data, y: test_label}
     # test_seqlen = testset.seqlen
+    test_feed_dict.update({ input_dropout_rate_ph: 1.0,
+                            output_dropout_rate_ph: 1.0,
+                            rnn_dropout_rate_ph: 1.0 })
     print("Testing Accuracy:", \
         sess.run(accuracy, feed_dict=test_feed_dict))
 
