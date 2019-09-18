@@ -9,6 +9,7 @@ from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
 from PointCloudGenerator import PointCloudGenerator
 from SanDiskGenerator import SanDiskGenerator
+from CelebAGenerator import CelebAGenerator
 
 import models
 
@@ -25,7 +26,7 @@ parser.add_argument('--training_steps', required=True, type=int)
 parser.add_argument('--batch_size', required=True, type=int)
 parser.add_argument('--n_hidden_dim', required=True, type=int)
 parser.add_argument('--experiment', required=True, type=str, choices=
-                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk'])
+                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk', 'celeba'])
 
 ######################
 # Optional Arguments
@@ -116,6 +117,15 @@ elif args.experiment == 'san-disk':
     data_params = {} 
     seq_max_len = 50
     use_seqlen = True
+    eval_on_varying_seq = False
+
+elif args.experiment == 'celeba':
+    DataGenerator = CelebAGenerator
+    n_input_dim = 218*178*3
+    n_output_dim = 7
+    data_params = {}
+    seq_max_len = 7
+    use_seqlen = False
     eval_on_varying_seq = False
 
 if args.n_computation_dim is None:
