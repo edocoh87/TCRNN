@@ -99,7 +99,7 @@ class CommRNN(object):
                  n_hidden_dim,
                  n_computation_dim,
                  dropout_rate_ph,
-                 initialize_to_max,
+                 initialization_scheme,
                  trainable,
                  activation,
                  input_model_fn,
@@ -108,7 +108,7 @@ class CommRNN(object):
         self.n_hidden_dim = n_hidden_dim
         self.n_computation_dim = n_computation_dim
         self.dropout_rate_ph = dropout_rate_ph
-        self.initialize_to_max = initialize_to_max
+        self.initialization_scheme = initialization_scheme 
         self.trainable = trainable
         self.activation = activation
         self.input_model_fn = input_model_fn
@@ -117,7 +117,7 @@ class CommRNN(object):
                                 num_units = self.n_hidden_dim,
                                 computation_dim = self.n_computation_dim,
                                 dropout_rate_ph = self.dropout_rate_ph,
-                                initialize_to_max = self.initialize_to_max,
+                                initialization_scheme = self.initialization_scheme,
                                 trainable = self.trainable,
                                 activation = self.activation)
 

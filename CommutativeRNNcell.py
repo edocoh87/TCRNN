@@ -172,7 +172,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         
         self.input_depth = inputs_shape[-1]
         # print('inputs_shape {}'.format(self.input_depth))
-        if self.initialize_to_max:
+        if self.initialization_scheme == 'max':
             assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
             print('num of units: ', self._num_units)
             print('comp dim: ', self._computation_dim)
@@ -196,7 +196,27 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_out_init_arr[3*i, i] = 1
                 kernel_out_init_arr[3*i+1, i] = 1
                 kernel_out_init_arr[3*i+2, i] = -1
-        else:
+        elif self.initialization_scheme == 'sum':
+            print('initializing transition matrix to sum')
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+                                                    self._computation_dim[0]))
+            # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            for i in range(self._num_units):
+                kernel_init_arr[i, 3*i] = 1
+                kernel_init_arr[i+self._num_units, 3*i] = -1
+                kernel_init_arr[i+self._num_units, 3*i+1] = 1
+                kernel_init_arr[i+self._num_units, 3*i+2] = -1
+
+            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
+            # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            for i in range(self._num_units):
+                kernel_out_init_arr[3*i, i] = 1
+                kernel_out_init_arr[3*i+1, i] = 1
+                kernel_out_init_arr[3*i+2, i] = -1
+            
+        elif self.initialization_scheme == 'rand':
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
             #    self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))

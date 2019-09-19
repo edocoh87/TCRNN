@@ -46,7 +46,7 @@ def to_onehot(arr, vec_len):
 
 class CelebAGenerator(DataGenerator):
     # def __init__(self, fname='../DeepSets/PointClouds/ModelNet40_cloud_from_edo.h5', down_sample=100, do_standardize=True, do_augmentation=True, train=True):
-    def __init__(self, base_dir='../CelebA', do_standardize=True, train=True):
+    def __init__(self, base_dir='data/CelebA', do_standardize=True, train=True):
 
         if train:
             fname = 'dataset_1_train.csv'

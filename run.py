@@ -32,7 +32,8 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 # Optional Arguments
 ######################
 parser.add_argument('--n_computation_dim', type=str, default=None)
-parser.add_argument('--initialize_to_max', action='store_true')
+#parser.add_argument('--initialize_to_max', action='store_true')
+parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'rand'], default='rand')
 parser.add_argument('--non_trainable_rnn', action='store_false')
 parser.add_argument('--save_model_to_path', type=str, default=None)
 parser.add_argument('--restore_from_path', type=str, default=None)
@@ -173,7 +174,7 @@ if ARCHITECTURE == 'CommRNN':
                 n_computation_dim=n_computation_dim,
                 dropout_rate_ph=rnn_dropout_rate_ph,
                 trainable=args.non_trainable_rnn,
-                initialize_to_max=args.initialize_to_max,
+                initialization_scheme=args.initialization_scheme,
                 activation=tf.nn.relu,
                 input_model_fn=input_model_fn,
                 output_model_fn=output_model_fn)
