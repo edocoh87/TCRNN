@@ -71,19 +71,20 @@ def _concat(prefix, suffix, static=False):
     shape = array_ops.concat((p, s), 0)
   return shape
 
-def _zero_state_tensors(state_size, batch_size, dtype):
-  """Create tensors of zeros based on state_size, batch_size, and dtype."""
-  def get_state_shape(s):
-    """Combine s with batch_size to get a proper tensor shape."""
-    c = _concat(batch_size, s)
-    # size = array_ops.zeros(c, dtype=dtype)
-    size = tf.constant(MINUS_INF) * array_ops.ones(c, dtype=dtype)
-    if not context.executing_eagerly():
-      c_static = _concat(batch_size, s, static=True)
-      size.set_shape(c_static)
-    return size
+# def _zero_state_tensors(state_size, batch_size, dtype):
+#   """Create tensors of zeros based on state_size, batch_size, and dtype."""
+#   def get_state_shape(s):
+#     """Combine s with batch_size to get a proper tensor shape."""
+#     c = _concat(batch_size, s)
+#     # size = array_ops.zeros(c, dtype=dtype)
+#     # size = tf.constant(MINUS_INF) * array_ops.ones(c, dtype=dtype)
+#     size = tf.random.normal(c, dtype=dtype)
+#     if not context.executing_eagerly():
+#       c_static = _concat(batch_size, s, static=True)
+#       size.set_shape(c_static)
+#     return size
 
-  return nest.map_structure(get_state_shape, state_size)
+#   return nest.map_structure(get_state_shape, state_size)
 
 
 class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
@@ -91,7 +92,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 num_units,
                 computation_dim,
                 dropout_rate_ph,
-                initialize_to_max=False,
+                initialization_scheme,
+                initial_state,
                 trainable=True,
                 activation=None,
                 reuse=None,
@@ -112,7 +114,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         self._computation_dim = computation_dim + [self._num_units]
         self.dropout_rate_ph = dropout_rate_ph
         self.trainable = trainable
-        self.initialize_to_max = initialize_to_max
+        self.initialization_scheme = initialization_scheme
+        self.initial_state = initial_state
         if activation:
             self._activation = activations.get(activation)
         else:
@@ -169,10 +172,10 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # if inputs_shape[-1] is None:
         #     raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
         #         #                         % str(inputs_shape))
-        
         self.input_depth = inputs_shape[-1]
         # print('inputs_shape {}'.format(self.input_depth))
         if self.initialization_scheme == 'max':
+            print('initializing transition matrix to max')
             assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
             print('num of units: ', self._num_units)
             print('comp dim: ', self._computation_dim)
@@ -196,25 +199,31 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_out_init_arr[3*i, i] = 1
                 kernel_out_init_arr[3*i+1, i] = 1
                 kernel_out_init_arr[3*i+2, i] = -1
+
         elif self.initialization_scheme == 'sum':
             print('initializing transition matrix to sum')
+            assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
+            print('num of units: ', self._num_units)
+            print('comp dim: ', self._computation_dim)
+            assert self._computation_dim[0] >= 2*self._num_units, '_computation_dim[0] must be at least x2 larger than _num_units to implement summation.'
+            assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement summation.'
             kernel_init_arr = np.zeros((self.input_depth + self._num_units,
                                                     self._computation_dim[0]))
             # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
             # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
             for i in range(self._num_units):
-                kernel_init_arr[i, 3*i] = 1
-                kernel_init_arr[i+self._num_units, 3*i] = -1
-                kernel_init_arr[i+self._num_units, 3*i+1] = 1
-                kernel_init_arr[i+self._num_units, 3*i+2] = -1
+                kernel_init_arr[i, 2*i] = 1
+                kernel_init_arr[i, 2*i+1] = -1
+                kernel_init_arr[i+self._num_units, 2*i] = 1
+                kernel_init_arr[i+self._num_units, 2*i+1] = -1
 
             kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
             # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
             # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
             for i in range(self._num_units):
-                kernel_out_init_arr[3*i, i] = 1
-                kernel_out_init_arr[3*i+1, i] = 1
-                kernel_out_init_arr[3*i+2, i] = -1
+                kernel_out_init_arr[2*i, i] = 1
+                kernel_out_init_arr[2*i+1, i] = -1
+
             
         elif self.initialization_scheme == 'rand':
             # xavier initialization:
@@ -314,6 +323,26 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         return output, output
         # return _output, _output
 
+    def _zero_state_tensors(self, state_size, batch_size, dtype):
+        """Create tensors of zeros based on state_size, batch_size, and dtype."""
+        def get_state_shape(s):
+            """Combine s with batch_size to get a proper tensor shape."""
+            c = _concat(batch_size, s)
+            
+            if self.initial_state == 'rand':
+                size = tf.random_normal(c, dtype=dtype)
+            elif self.initial_state == 'minus-inf':
+                size = tf.constant(MINUS_INF) * array_ops.ones(c, dtype=dtype)
+            elif self.initial_state == 'zeros':
+                size = array_ops.zeros(c, dtype=dtype)
+
+            if not context.executing_eagerly():
+                c_static = _concat(batch_size, s, static=True)
+                size.set_shape(c_static)
+            return size
+
+        return nest.map_structure(get_state_shape, state_size)
+
     def zero_state(self, batch_size, dtype):
         """Return zero-filled state tensor(s).
         Args:
@@ -336,7 +365,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         #     if (last_batch_size == batch_size and last_dtype == dtype and last_state_size == state_size):
         #         return last_output
         with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-            output = _zero_state_tensors(state_size, batch_size, dtype)
+            output = self._zero_state_tensors(state_size, batch_size, dtype)
         # if is_eager:
         #     self._last_zero_state = (state_size, batch_size, dtype, output)
         return output
