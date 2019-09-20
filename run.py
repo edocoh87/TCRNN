@@ -33,7 +33,7 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 parser.add_argument('--n_computation_dim', type=str, default=None)
 #parser.add_argument('--initialize_to_max', action='store_true')
-parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'sum2', 'rand'], default='rand')
+parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'sum2', 'max-sum', 'rand'], default='rand')
 parser.add_argument('--initial_state', type=str, choices=['rand', 'minus-inf', 'zeros'], default='rand')
 parser.add_argument('--non_trainable_rnn', action='store_false')
 parser.add_argument('--save_model_to_path', type=str, default=None)

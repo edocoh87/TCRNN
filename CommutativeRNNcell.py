@@ -200,6 +200,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_out_init_arr[3*i+1, i] = 1
                 kernel_out_init_arr[3*i+2, i] = -1
 
+
         elif self.initialization_scheme == 'sum':
             print('initializing transition matrix to sum')
             assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
@@ -254,6 +255,39 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
                 kernel_out_init_arr[4*i+1, i] = -1
                 kernel_out_init_arr[4*i+2, i] = 1
                 kernel_out_init_arr[4*i+3, i] = -1
+
+
+        elif self.initialization_scheme == 'max-sum':
+            print('initializing transition matrix to max-sum')
+            assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
+            print('num of units: ', self._num_units)
+            print('comp dim: ', self._computation_dim)
+            assert self._computation_dim[0] >= 5*self._num_units, '_computation_dim[0] must be at least x5 larger than _num_units to implement max-sum.'
+            assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement sum2.'
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+                                                    self._computation_dim[0]))
+            # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
+            for i in range(self._num_units):
+                kernel_init_arr[i, 5*i] = 1
+                kernel_init_arr[i, 5*i+3] = 1
+                kernel_init_arr[i, 5*i+4] = -1
+                kernel_init_arr[i+self._num_units, 5*i] = -1
+                kernel_init_arr[i+self._num_units, 5*i+1] = -1
+                kernel_init_arr[i+self._num_units, 5*i+2] = 1
+                kernel_init_arr[i+self._num_units, 5*i+3] = 1
+                kernel_init_arr[i+self._num_units, 5*i+4] = -1
+
+            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
+            # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
+            for i in range(self._num_units):
+                kernel_out_init_arr[5*i, i] = 1
+                kernel_out_init_arr[5*i+1, i] = -1
+                kernel_out_init_arr[5*i+2, i] = 1
+                kernel_out_init_arr[5*i+3, i] = 1
+                kernel_out_init_arr[5*i+4, i] = -1
+
 
         elif self.initialization_scheme == 'rand':
             # xavier initialization:
@@ -313,7 +347,9 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
         rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
         self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
-        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
+        
+        self._kernel_out = self.__kernel_out
+        # self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
 
         # self._kernels = [lr_mult(rnn_lr_ph)(_ker) for _ker in self.__kernels]
         self._kernels = self.__kernels
@@ -360,7 +396,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             c = _concat(batch_size, s)
             
             if self.initial_state == 'rand':
-                size = tf.random_normal(c, stddev=0.1, dtype=dtype)
+                size = tf.random_normal(c, stddev=1.0, dtype=dtype)
             elif self.initial_state == 'minus-inf':
                 size = tf.constant(MINUS_INF) * array_ops.ones(c, dtype=dtype)
             elif self.initial_state == 'zeros':
