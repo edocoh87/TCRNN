@@ -33,7 +33,7 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 parser.add_argument('--n_computation_dim', type=str, default=None)
 #parser.add_argument('--initialize_to_max', action='store_true')
-parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'rand'], default='rand')
+parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'sum2', 'rand'], default='rand')
 parser.add_argument('--initial_state', type=str, choices=['rand', 'minus-inf', 'zeros'], default='rand')
 parser.add_argument('--non_trainable_rnn', action='store_false')
 parser.add_argument('--save_model_to_path', type=str, default=None)
@@ -207,10 +207,11 @@ cost = loss if commutative_regularization_term is None else \
                     
 # cost = loss + expct_comm_reg_weight*commutative_regularization_term
 # train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
-optimizer = tf.contrib.opt.AdamWOptimizer(
-                                weight_decay=1e-7,
-                                epsilon=1e-3,
-                                learning_rate=lr)
+optimizer = tf.train.AdamOptimizer(learning_rate=lr)
+#optimizer = tf.contrib.opt.AdamWOptimizer(
+#                                weight_decay=1e-7,
+#                                epsilon=1e-3,
+#                                learning_rate=lr)
                             #).minimize(cost)
 gradients, variables = zip(*optimizer.compute_gradients(cost))
 gradients, _ = tf.clip_by_global_norm(gradients, 5.0)

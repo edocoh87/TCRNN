@@ -12,7 +12,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 1e-2
+RAND_BOUND = 1e-3
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -207,24 +207,54 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             print('comp dim: ', self._computation_dim)
             assert self._computation_dim[0] >= 2*self._num_units, '_computation_dim[0] must be at least x2 larger than _num_units to implement summation.'
             assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement summation.'
-            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
-                                                    self._computation_dim[0]))
+            # kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+            #                                        self._computation_dim[0]))
             # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
-            # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
             for i in range(self._num_units):
                 kernel_init_arr[i, 2*i] = 1
                 kernel_init_arr[i, 2*i+1] = -1
                 kernel_init_arr[i+self._num_units, 2*i] = 1
                 kernel_init_arr[i+self._num_units, 2*i+1] = -1
 
-            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
+            # kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
             # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
-            # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
             for i in range(self._num_units):
                 kernel_out_init_arr[2*i, i] = 1
                 kernel_out_init_arr[2*i+1, i] = -1
 
             
+        elif self.initialization_scheme == 'sum2':
+            print('initializing transition matrix to sum2')
+            assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
+            print('num of units: ', self._num_units)
+            print('comp dim: ', self._computation_dim)
+            assert self._computation_dim[0] >= 4*self._num_units, '_computation_dim[0] must be at least x4 larger than _num_units to implement sum2.'
+            assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement sum2.'
+            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+                                                    self._computation_dim[0]))
+            # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
+            for i in range(self._num_units):
+                kernel_init_arr[i, 4*i] = 0.5
+                kernel_init_arr[i, 4*i+1] = -0.5
+                kernel_init_arr[i, 4*i+2] = 0.5
+                kernel_init_arr[i, 4*i+3] = -0.5
+                kernel_init_arr[i+self._num_units, 4*i] = 0.5
+                kernel_init_arr[i+self._num_units, 4*i+1] = -0.5
+                kernel_init_arr[i+self._num_units, 4*i+2] = 0.5
+                kernel_init_arr[i+self._num_units, 4*i+3] = -0.5
+
+            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
+            # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
+            for i in range(self._num_units):
+                kernel_out_init_arr[4*i, i] = 1
+                kernel_out_init_arr[4*i+1, i] = -1
+                kernel_out_init_arr[4*i+2, i] = 1
+                kernel_out_init_arr[4*i+3, i] = -1
+
         elif self.initialization_scheme == 'rand':
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
@@ -330,7 +360,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             c = _concat(batch_size, s)
             
             if self.initial_state == 'rand':
-                size = tf.random_normal(c, dtype=dtype)
+                size = tf.random_normal(c, stddev=0.1, dtype=dtype)
             elif self.initial_state == 'minus-inf':
                 size = tf.constant(MINUS_INF) * array_ops.ones(c, dtype=dtype)
             elif self.initial_state == 'zeros':
