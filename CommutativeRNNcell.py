@@ -111,7 +111,12 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # self.input_spec = input_spec.InputSpec(ndim=2)
 
         self._num_units = num_units
-        self._computation_dim = computation_dim + [self._num_units]
+        self._computation_dim = computation_dim
+        if len(computation_dim) == 1:
+            self._computation_dim += [self._num_units]
+        else:
+            assert computation_dim[1] == self._num_units, 'the second layer must have equal size to hidden layer but is {}, and hidden size is {}'.format(computation_dim[1], self._num_units)
+        #self._computation_dim = computation_dim + [self._num_units]
         self.dropout_rate_ph = dropout_rate_ph
         self.trainable = trainable
         self.initialization_scheme = initialization_scheme
@@ -348,8 +353,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
         self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
         
-        self._kernel_out = self.__kernel_out
-        # self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
+        # self._kernel_out = self.__kernel_out
+        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
 
         # self._kernels = [lr_mult(rnn_lr_ph)(_ker) for _ker in self.__kernels]
         self._kernels = self.__kernels
@@ -380,7 +385,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             _inputs = tf.nn.dropout(_inputs, self.dropout_rate_ph)
             _gate_inputs = math_ops.matmul(_inputs, self._kernels[i])
             if i < len(self._kernels)-1:
-                _inputs = self._activation(_gate_inputs)
+                #_inputs = self._activation(_gate_inputs)
+                _inputs = tf.nn.leaky_relu(_gate_inputs)
             else:
                 outputs = _gate_inputs
             
