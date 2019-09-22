@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.stats as stats
 import tensorflow as tf
 from tensorflow.python.keras import activations
 from tensorflow.python.eager import context
@@ -12,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 1e-3
+RAND_BOUND = 0.2
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -298,16 +299,19 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
             #    self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))
-            kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
+            kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
+            #kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
             #kernel_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim)), 
 	    #		size=(self.input_depth + self._num_units, self._computation_dim))
 
             # kernel_out_init_arr = np.random.rand(self._computation_dim,
-            kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
+            #kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
+            kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
             #kernel_out_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self._num_units + self._computation_dim)),
 	    #	 			size=(self._computation_dim, self._num_units))
 
-        kernels_init_arr = [np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[i-1], self._computation_dim[i]))
+        #kernels_init_arr = [np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[i-1], self._computation_dim[i]))
+        kernels_init_arr = [stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self._computation_dim[i-1], self._computation_dim[i]))
                                                                                     for i in range(2, len(self._computation_dim))]
         
         def lr_mult(lr_ph):

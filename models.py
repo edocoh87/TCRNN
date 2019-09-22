@@ -151,10 +151,10 @@ class CommRNN(object):
         # outputs, states = tf.nn.dynamic_rnn(
         outputs, states = tf.contrib.rnn.static_rnn(
                                           self.rnn_cell,
-                                          x,
+                                          x[1:],
                                           dtype=tf.float32,
                                           sequence_length=seqlen,
-                                          initial_state=None)
+                                          initial_state=x[0])
         if seqlen is not None:
             # When performing dynamic calculation, we must retrieve the last
             # dynamically computed output, i.e., if a sequence length is 10, we need
