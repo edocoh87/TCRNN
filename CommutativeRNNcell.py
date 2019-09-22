@@ -325,6 +325,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # # _lr_ph = tf.placeholder(tf.float32, shape=[], name='rnn_lr_ph')
         # _lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')    
 
+        # with tf.variable_scope("rnn_weights"):
         self.__kernel = self.add_variable(
             "kernel",
             # shape=[self.input_depth + self._num_units, self._computation_dim])
