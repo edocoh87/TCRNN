@@ -2,7 +2,8 @@ import numpy as np
 import tensorflow as tf
 from functools import partial
 
-from CommutativeRNNcell import CommutativeRNNcell
+# from CommutativeRNNcell import CommutativeRNNcell
+from SparseCommutativeRNNcell import CommutativeRNNcell
 import commutative_regularizer
 
 def create_lr_fn(schedule):
