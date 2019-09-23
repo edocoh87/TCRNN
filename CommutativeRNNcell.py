@@ -13,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 0.2
+RAND_BOUND = 0.05
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.

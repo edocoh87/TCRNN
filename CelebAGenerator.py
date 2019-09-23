@@ -7,7 +7,7 @@ from DataGenerator import DataGenerator
 
 def load_row(images, base_dir):
     curr_img = '{:06}.jpg'
-    return [np.asarray(Image.open(os.path.join(base_dir, curr_img.format(img)))) for img in images]
+    return [np.asarray(Image.open(os.path.join(base_dir, curr_img.format(img))).convert('L')) for img in images]
 
 
 def load_dataset_from_csv(fname, img_base_dir):

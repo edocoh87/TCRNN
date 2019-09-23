@@ -42,7 +42,8 @@ parser.add_argument('--restore_from_path', type=str, default=None)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
-parser.add_argument('--l1_reg_coef', type=float, default=1.0)
+parser.add_argument('--l1_coef', type=float, default=1.0)
+parser.add_argument('--l2_coef', type=float, default=1.0)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, (1e-3, 1.0))]")
 parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum',
             help="the aggregation mode to use (relevant only for DeepSet architecture.")
@@ -124,7 +125,7 @@ elif args.experiment == 'san-disk':
 
 elif args.experiment == 'celeba':
     DataGenerator = CelebAGenerator
-    n_input_dim = 218*178*3
+    n_input_dim = 218*178
     n_output_dim = 7
     data_params = {}
     seq_max_len = 7
@@ -210,11 +211,11 @@ cost = loss if commutative_regularization_term is None else \
 # set L1 regularization on RNN weights.
 rnn_weights = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES, scope="rnn/commutative_rn_ncell")
 if len(rnn_weights) > 0:
-    l1_regularizer = tf.contrib.layers.l1_regularizer(scale=args.l1_reg_coef)
-    l1_regularization_penalty = tf.contrib.layers.apply_regularization(l1_regularizer, rnn_weights)
-    cost += l1_regularization_penalty
+    norm_regularizer = tf.contrib.layers.l1_l2_regularizer(scale_l1=args.l1_coef, scale_l2=args.l2_coef)
+    norm_regularization_penalty = tf.contrib.layers.apply_regularization(norm_regularizer, rnn_weights)
+    cost += norm_regularization_penalty
 else:
-    l1_regularization_penalty = None
+    norm_regularization_penalty = None
 
 # cost = loss + expct_comm_reg_weight*commutative_regularization_term
 # train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(cost)
@@ -247,8 +248,8 @@ if commutative_regularization_term is not None:
     summary_ops += [commutative_regularization_term]
     tf.summary.scalar('regularization loss', commutative_regularization_term)
 
-if l1_regularization_penalty is not None:
-    summary_ops += [l1_regularization_penalty]
+if norm_regularization_penalty is not None:
+    summary_ops += [norm_regularization_penalty]
 
 merged = tf.summary.merge_all()
 summary_ops = summary_ops + [merged]
@@ -316,8 +317,8 @@ with tf.Session() as sess:
             if commutative_regularization_term is not None:
                 summary_print += ", Regularization Loss=" + "{:.6f}".format(_summary_ops[2])
             
-            if l1_regularization_penalty is not None:
-                summary_print += ", L1 Loss=" + "{:.6f}".format(_summary_ops[3])
+            if norm_regularization_penalty is not None:
+                summary_print += ", Norm Loss=" + "{:.6f}".format(_summary_ops[3])
             
             val_data = trainset.get_validation()
             if val_data is not None:
