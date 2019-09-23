@@ -13,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 1.0
+RAND_BOUND = 10.0
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -143,13 +143,18 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         A = array_ops.transpose(self._kernel_out)
         return A, W, THETA
 
-    def get_comm_regularizer(self, epsilon=1e-5):
+    def get_comm_regularizer(self, epsilon=1e-3):
         def G(U, V, norm_matrix):
             inner_prod_mat = tf.matmul(U, V, transpose_b=True)
             cos_alpha = tf.divide(inner_prod_mat, norm_matrix + epsilon)
+            #cos_alpha = tf.Print(_cos_alpha, [_cos_alpha], 'cos_alpha', summarize=10000)
             alpha = tf.acos(cos_alpha)
-            return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
-
+            #alpha = tf.Print(_alpha, [cos_alpha, _alpha], 'cos_alpha and alpha', summarize=10000)
+            _norms = (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
+            norms = tf.Print(_norms, [_norms], 'cos_alpha and alpha', summarize=10000)
+            #return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
+            return norms
+        
         A, W, THETA = self.get_weights()
         # print('A: ', A)
         # print('W: ', W)
@@ -165,7 +170,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # print('norm_per_row: ', norm_per_row)
         
         # norm_matrix_ij = norm(u_i)*norm(u_j)
-        norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+        _norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+        norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
         
         # print('norm_matrix: ', norm_matrix)
 

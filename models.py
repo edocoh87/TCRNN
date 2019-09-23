@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 from functools import partial
 
-# from CommutativeRNNcell import CommutativeRNNcell
-from SparseCommutativeRNNcell import CommutativeRNNcell
+from CommutativeRNNcell import CommutativeRNNcell
+# from SparseCommutativeRNNcell import CommutativeRNNcell
 import commutative_regularizer
 
 def create_lr_fn(schedule):
@@ -219,7 +219,8 @@ class DeepSet(object):
         # x = tf.reshape(x, [-1, self.input_dim])
         x = self.input_model_fn(x)
         post_shp = tf.shape(x)
-        
+        x = tf.reshape(x, [-1, post_shp[-1]])
+                
         if seqlen is not None:
             mask = tf.sequence_mask(seqlen, maxlen=seq_max_len, dtype=tf.float32)
             mask = tf.reshape(mask, [-1, 1])
