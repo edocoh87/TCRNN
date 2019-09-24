@@ -7,6 +7,7 @@ import json
 
 from MNISTImageGenerator import MNISTImageGenerator
 from DigitSequenceGenerator import DigitSequenceGenerator
+from AnomalySequenceGenerator import AnomalySequenceGenerator
 from PointCloudGenerator import PointCloudGenerator
 from SanDiskGenerator import SanDiskGenerator
 from CelebAGenerator import CelebAGenerator
@@ -115,7 +116,7 @@ elif args.experiment in ['dgt-max', 'dgt-sum', 'dgt-prty']:
     num_test_examples = 500
 
 elif args.experiment == 'dgt-anmly':
-    DataGenerator = DigitSequenceGenerator
+    DataGenerator = AnomalySequenceGenerator
     n_input_dim = 1
     n_output_dim = 2
     data_params = {'n_samples': 100000,
