@@ -26,7 +26,7 @@ parser.add_argument('--training_steps', required=True, type=int)
 parser.add_argument('--batch_size', required=True, type=int)
 parser.add_argument('--n_hidden_dim', required=True, type=int)
 parser.add_argument('--experiment', required=True, type=str, choices=
-                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'san-disk', 'celeba'])
+                    ['pnt-cld', 'img-max', 'img-sum', 'dgt-max', 'dgt-sum', 'dgt-prty', 'dgt-anmly', 'san-disk', 'celeba'])
 
 ######################
 # Optional Arguments
@@ -102,7 +102,7 @@ elif args.experiment in ['img-max', 'img-sum']:
 elif args.experiment in ['dgt-max', 'dgt-sum', 'dgt-prty']:
     DataGenerator = DigitSequenceGenerator
     n_input_dim = 1
-    n_output_dim = 2 if args.experiment == 'dgt-prty' else 1
+    n_output_dim = 2 if args.experiment in ['dgt-prty'] else 1
     mode = args.experiment.split('-')[-1] # take the relevant mode.
     data_params = {'n_samples': 100000,
                    'max_seq_len': 10,
@@ -112,6 +112,20 @@ elif args.experiment in ['dgt-max', 'dgt-sum', 'dgt-prty']:
     use_seqlen = True
     eval_on_varying_seq = True
     test_sequences = np.arange(10, 110, 10)
+    num_test_examples = 500
+
+elif args.experiment == 'dgt-anmly':
+    DataGenerator = DigitSequenceGenerator
+    n_input_dim = 1
+    n_output_dim = 2
+    data_params = {'n_samples': 100000,
+                   'max_seq_len': 50,
+                   'min_seq_len': 10,
+                   'mode': 'anmly'}
+    seq_max_len = 50
+    use_seqlen = True
+    eval_on_varying_seq = True
+    test_sequences = np.arange(10, 50, 5)
     num_test_examples = 500
 
 elif args.experiment == 'san-disk':
@@ -257,11 +271,10 @@ merged = tf.summary.merge_all()
 summary_ops = summary_ops + [merged]
 # making directory to save tensorboard files.
 log_dir_path = os.path.join(args.log_dir, dir_name)
-if not os.path.exists(log_dir_path):
-    os.makedirs(log_dir_path)
-else:
+
+if os.path.exists(log_dir_path):
     log_dir_path += '_2'
-    os.makedirs(log_dir_path)
+os.makedirs(log_dir_path)
 
 #os.mkdir(log_dir_path)
 with open(os.path.join(log_dir_path, 'config.json'), 'w') as f:

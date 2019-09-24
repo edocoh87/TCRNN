@@ -2,6 +2,11 @@ import numpy as np
 
 from DataGenerator import DataGenerator
 
+def to_onehot(arr, vec_len):
+    res = np.zeros((len(arr), vec_len))
+    res[np.arange(len(arr)), arr] = 1.0
+    return res
+
 class DigitSequenceGenerator(DataGenerator):
     """ Generate sequence of data with dynamic length.
     This class generate samples for training:
@@ -52,10 +57,30 @@ class DigitSequenceGenerator(DataGenerator):
             elif mode == 'max':
                 label = [np.max(np.array(s))]
             elif mode == 'prty':
-                label = sum(np.array(s))%2
+                label = to_onehot(sum(np.array(s))%2, 2)
+            elif mode == 'anmly':
+                # label is 1 if there are three consecutive identical numbers
+                # or if the sum of the sequence is greater than 120.
+                label = 0 
+                # print(np.split(s, np.where(np.diff(s) != 0)[0]+1))
+                _s = np.array(s).ravel()
+                # print(_s)
+                # print(np.split(_s, np.where(np.diff(_s) != 0)[0]+1))
+                for _ in np.split(_s, np.where(np.diff(_s) != 0)[0]+1):
+                    # print(_)
+                    if len(_) > 2 and _[0] > 0:
+                        # print(_)
+                        # if we're here, there are consecutive numbers in the array.
+                        label = 1
+                if np.sum(_s) > 150:
+                    label = 1
+                # label = to_onehot(label, 2)
 
             self.labels.append(label)
+        # print(self.labels)
             # self.labels.append(sum(np.array(s)))
+        if mode in ['prty', 'anmly']:
+            self.labels = to_onehot(self.labels, 2)
         self.batch_id = 0
 
     def next(self, batch_size=np.inf):
@@ -73,9 +98,11 @@ class DigitSequenceGenerator(DataGenerator):
         return batch_data, batch_labels, batch_seqlen
 
 if __name__=='__main__':
-    sample = DigitSequenceGenerator(n_samples=20)
+    sample = DigitSequenceGenerator(n_samples=20, mode='anmly', min_seq_len=10, max_seq_len=50)
+    # exit()
     for i in range(1):
         batch_data, batch_labels, batch_seqlen = sample.next(3)
-        print(np.array(batch_data))
         print(batch_labels)
-        print(batch_seqlen)
+        # print(np.array(batch_data))
+        # print(batch_labels)
+        # print(batch_seqlen)
