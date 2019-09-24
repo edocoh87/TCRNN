@@ -1,3 +1,4 @@
+import random
 import numpy as np
 
 from DataGenerator import DataGenerator
@@ -11,8 +12,12 @@ def seq_to_str(seq):
     _seq = str([int(_[0]) for _ in seq])
     return ''.join(_seq[1:-1].split(', '))
 
-def seq_has_anomaly(seq, anomaly):
-    return anomaly in seq_to_str(seq)
+
+
+def seq_has_anomaly(seq, seq_pattern, occ_pattern):
+    seq_str = seq_to_str(seq)
+    sorted_seq_str = ''.join(sorted(seq_str))
+    return seq_pattern in seq_str or occ_pattern in sorted_seq_str
 
 class AnomalySequenceGenerator(DataGenerator):
     """ Generate sequence of data with dynamic length.
@@ -26,10 +31,12 @@ class AnomalySequenceGenerator(DataGenerator):
     'seqlen' attribute that records every actual sequence length.
     """
     def __init__(self, n_samples=1000, max_seq_len=30, min_seq_len=10,
-                 max_value=9, anomaly_sequence="1111", **kwargs):
+                 max_value=9, **kwargs):
         self.data = []
         self.labels = []
         self.seqlen = []
+        self.anomaly_sequence = "1111"
+        self.anomaly_occurance = "9999999"
         for i in range(n_samples):
             # Random sequence length
             _seqlen = np.random.randint(min_seq_len, max_seq_len)
@@ -39,12 +46,22 @@ class AnomalySequenceGenerator(DataGenerator):
             s = [[float(np.random.randint(0, max_value))]
                  for i in range(_seqlen)]
             
+            # add some anomality
             if np.random.random() < .5:
-                start_idx = np.random.randint(0, _seqlen-len(anomaly_sequence))
-                for i, d in enumerate(anomaly_sequence):
-                    s[start_idx+i][0] = int(d)
+                if np.random.random() < .5:
+                    # sequence anomality
+                    # find a random place to start.
+                    start_idx = np.random.randint(0, _seqlen-len(self.anomaly_sequence))
+                    for i, d in enumerate(self.anomaly_sequence):
+                        s[start_idx+i][0] = float(d)
+                else:
+                    # occurance anomality
+                    # write to the begining of the sequence and then shuffle.
+                    for i, d in enumerate(self.anomaly_occurance):
+                        s[i][0] = float(d)
+                    random.shuffle(s)
             
-            if seq_has_anomaly(s, anomaly_sequence):
+            if seq_has_anomaly(s, self.anomaly_sequence, self.anomaly_occurance):
                 label = 1
             else:
                 label = 0
@@ -75,12 +92,12 @@ class AnomalySequenceGenerator(DataGenerator):
         return batch_data, batch_labels, batch_seqlen
 
 if __name__=='__main__':
-    sample = AnomalySequenceGenerator(n_samples=2000, mode='anmly', min_seq_len=10, max_seq_len=50)
-    print(np.mean(sample.labels, 0))
+    sample = AnomalySequenceGenerator(n_samples=2000, mode='anmly', min_seq_len=20, max_seq_len=30)
+    # print(np.mean(sample.labels, 0))
     # exit()
-    # for i in range(1):
-    #     batch_data, batch_labels, batch_seqlen = sample.next(3)
-    #     print(batch_labels)
-        # print(np.array(batch_data))
+    for i in range(1):
+        batch_data, batch_labels, batch_seqlen = sample.next(3)
+        print(batch_labels)
+        print(np.array(batch_data))
         # print(batch_labels)
         # print(batch_seqlen)
