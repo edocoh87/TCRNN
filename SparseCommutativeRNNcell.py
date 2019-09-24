@@ -13,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 10.0
+RAND_BOUND = 0.3
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -143,7 +143,47 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         A = array_ops.transpose(self._kernel_out)
         return A, W, THETA
 
-    def get_comm_regularizer(self, epsilon=1e-3):
+    # when using only one network for all the dimensions together.
+    def get_very_sparse_regularizer(self):
+        def angle_between(v1, v2, epsilon=1e-5):
+            """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+                    >>> angle_between((1, 0, 0), (0, 1, 0))
+                    1.5707963267948966
+                    >>> angle_between((1, 0, 0), (1, 0, 0))
+                    0.0
+                    >>> angle_between((1, 0, 0), (-1, 0, 0))
+                    3.141592653589793
+            """
+            # print_v1 = tf.Print(v1, [v1])
+            # print_v2 = tf.Print(v2, [v2])
+            
+            v1_u = tf.nn.l2_normalize(v1)
+            v2_u = tf.nn.l2_normalize(v2)
+            return tf.acos(tf.clip_by_value(tf.matmul(tf.transpose(v1_u), v2_u), -1.0 + epsilon, 1.0 - epsilon))
+
+        def get_arccos_integral(v1, v2):
+            # 1/pi  * norm(v1)*norm(v2) * (sin(alpha) + (pi-alpha)cos(alpha))
+            angle = angle_between(v1, v2)
+            return ((tf.norm(v1) * tf.norm(v2)) / np.pi) * (tf.sin(angle) + (np.pi - angle)*tf.cos(angle))
+        
+        # A, W, THETA = self.get_weights()
+        A = self._kernel_out 
+        _W, _THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
+        W = tf.transpose(_W)
+        THETA = tf.transpose(_THETA)
+        # THETA = tf.Print(tmp_THETA, [tmp_THETA, W], 'weight vectors:')
+        # print(self._kernel)
+        # print(W, THETA)
+        
+        aa = tf.matmul(A, A, transpose_a=True)
+        g_w_w = get_arccos_integral(W, W)
+        g_w_theta = get_arccos_integral(W, THETA)
+        g_theta_theta = get_arccos_integral(THETA, THETA)
+        reg_loss = aa*(g_w_w - 2*g_w_theta + g_theta_theta)
+        return tf.squeeze(reg_loss)
+
+    def _get_comm_regularizer(self, epsilon=1e-3):
         def G(U, V, norm_matrix):
             inner_prod_mat = tf.matmul(U, V, transpose_b=True)
             cos_alpha = tf.divide(inner_prod_mat, norm_matrix + epsilon)
@@ -179,6 +219,11 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         UV = G(U, V, norm_matrix)
 
         return tf.reduce_sum(2*tf.multiply(Q, UU-UV))
+
+    def get_comm_regularizer(self):
+        return self.get_very_sparse_regularizer()
+        # return self._get_comm_regularizer()
+
     # @tf_utils.shape_type_conversion
     def build(self, inputs_shape):
         # if inputs_shape[-1] is None:
@@ -245,14 +290,16 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
             #    self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))
-            kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.input_depth + self._num_units, self.neurons_per_cell))
+            kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(2, self.neurons_per_cell))
+            # kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.input_depth + self._num_units, self.neurons_per_cell))
             #kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
             #kernel_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim)), 
 	    #		size=(self.input_depth + self._num_units, self._computation_dim))
 
             # kernel_out_init_arr = np.random.rand(self._computation_dim,
             #kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
-            kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, self._computation_dim[1]))
+            # kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, self._computation_dim[1]))
+            kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, 1))
             #kernel_out_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self._num_units + self._computation_dim)),
 	    #	 			size=(self._computation_dim, self._num_units))
         
@@ -270,7 +317,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # shape=[self.input_depth + self._num_units, self._computation_dim])
             trainable=self.trainable,
             # shape=[self.input_depth + self._num_units, self._computation_dim[0]],
-            shape=[self.input_depth + self._num_units, self.neurons_per_cell],
+            shape=[2, self.neurons_per_cell],
+            # shape=[self.input_depth + self._num_units, self.neurons_per_cell],
             initializer=tf.constant_initializer(kernel_init_arr))
             # initializer=tf.initializers.identity(dtype=self.dtype))
         
@@ -280,7 +328,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # shape=[self._computation_dim, self._num_units])
             trainable=self.trainable,
             # shape=[self._computation_dim[0], self._computation_dim[1]],
-            shape=[self.neurons_per_cell, self._computation_dim[1]],
+            shape=[self.neurons_per_cell, 1],
+            # shape=[self.neurons_per_cell, self._computation_dim[1]],
             initializer=tf.constant_initializer(kernel_out_init_arr))
 
 
@@ -305,27 +354,27 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             return _lr_mult
             
         rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
-        tmp_kernel = lr_mult(rnn_lr_ph)(self.__kernel)
-        tmp_kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
+        self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
+        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
 
         # MAKE MATRICES BIG AGAIN!
-        list_of_matrices = []
-        for u in range(self._num_units):
-            helper_matrix = np.zeros((2*self._num_units, 2*self._num_units))
-            helper_matrix[u,u] = 1
-            helper_matrix[u+self._num_units,u+self._num_units] = 1
-            list_of_matrices.append(tf.matmul(tf.constant(helper_matrix, dtype=tf.float32), tmp_kernel))
+        # list_of_matrices = []
+        # for u in range(self._num_units):
+        #     helper_matrix = np.zeros((2*self._num_units, 2*self._num_units))
+        #     helper_matrix[u,u] = 1
+        #     helper_matrix[u+self._num_units,u+self._num_units] = 1
+        #     list_of_matrices.append(tf.matmul(tf.constant(helper_matrix, dtype=tf.float32), tmp_kernel))
 
-        list_of_matrices_out = []
-        for u in range(self._num_units):
-            helper_matrix = np.zeros((self._num_units, self._num_units))
-            helper_matrix[u,u] = 1
-            list_of_matrices_out.append(tf.matmul(tmp_kernel_out, tf.constant(helper_matrix, dtype=tf.float32)))
-            # helper_matrix = tf.constant()
-        self._kernel = tf.concat(list_of_matrices, axis=1)
-        self._kernel_out = tf.concat(list_of_matrices_out, axis=0)
-        # self._kernels = [lr_mult(rnn_lr_ph)(_ker) for _ker in self.__kernels]
-        self._kernels = self.__kernels
+        # list_of_matrices_out = []
+        # for u in range(self._num_units):
+        #     helper_matrix = np.zeros((self._num_units, self._num_units))
+        #     helper_matrix[u,u] = 1
+        #     list_of_matrices_out.append(tf.matmul(tmp_kernel_out, tf.constant(helper_matrix, dtype=tf.float32)))
+        #     # helper_matrix = tf.constant()
+        # self._kernel = tf.concat(list_of_matrices, axis=1)
+        # self._kernel_out = tf.concat(list_of_matrices_out, axis=0)
+        # # self._kernels = [lr_mult(rnn_lr_ph)(_ker) for _ker in self.__kernels]
+        # self._kernels = self.__kernels
             # initializer=tf.initializers.identity(dtype=self.dtype))
         
         self.built = True
@@ -334,12 +383,23 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
         # print('inputs: ', inputs)
         # print('state: ', state)
+        # exit()
+        input_shape = tf.shape(inputs)
+        # print(input_shape)
+        # exit()
         # print('concatenated: ', array_ops.concat([inputs, state], 1))
         # print('weights: ', self._kernel)
         # _state = tf.Print(state, [state], "state: ", summarize=100)
-        input_and_state = array_ops.concat([inputs, state], 1)
-        input_and_state = tf.nn.dropout(input_and_state, self.dropout_rate_ph)
-        gate_inputs = math_ops.matmul(input_and_state, self._kernel)
+        _inputs = array_ops.reshape(inputs, [-1, 1])
+        _state = array_ops.reshape(state, [-1, 1])
+        _input_and_state = array_ops.concat([_inputs, _state], 1) 
+        _input_and_state = tf.nn.dropout(_input_and_state, self.dropout_rate_ph)
+        gate_inputs = math_ops.matmul(_input_and_state, self._kernel)
+
+        # input_and_state = array_ops.concat([inputs, state], 1)
+        # input_and_state = tf.nn.dropout(input_and_state, self.dropout_rate_ph)
+
+        # gate_inputs = math_ops.matmul(input_and_state, self._kernel)
         
         # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
         gate_outputs = self._activation(gate_inputs)
@@ -347,16 +407,17 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # this is not in the standard rnn cell and the reason we had to implement a new cell..
         # gate_outputs = tf.nn.dropout(gate_outputs, self.dropout_rate_ph)
         output = math_ops.matmul(gate_outputs, self._kernel_out)
+        output = tf.reshape(output, input_shape)
 
-        _inputs = output
-        for i in range(len(self._kernels)):
-            _inputs = tf.nn.dropout(_inputs, self.dropout_rate_ph)
-            _gate_inputs = math_ops.matmul(_inputs, self._kernels[i])
-            if i < len(self._kernels)-1:
-                #_inputs = self._activation(_gate_inputs)
-                _inputs = tf.nn.leaky_relu(_gate_inputs)
-            else:
-                outputs = _gate_inputs
+        # _inputs = output
+        # for i in range(len(self._kernels)):
+        #     _inputs = tf.nn.dropout(_inputs, self.dropout_rate_ph)
+        #     _gate_inputs = math_ops.matmul(_inputs, self._kernels[i])
+        #     if i < len(self._kernels)-1:
+        #         #_inputs = self._activation(_gate_inputs)
+        #         _inputs = tf.nn.leaky_relu(_gate_inputs)
+        #     else:
+        #         outputs = _gate_inputs
             
         
         # output = tf.maximum(inputs, state)
