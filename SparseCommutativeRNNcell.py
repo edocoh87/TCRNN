@@ -87,6 +87,53 @@ def _concat(prefix, suffix, static=False):
 
 #   return nest.map_structure(get_state_shape, state_size)
 
+def angle_between(v1, v2, epsilon=1e-5):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+            1.5707963267948966
+            >>> angle_between((1, 0, 0), (1, 0, 0))
+            0.0
+            >>> angle_between((1, 0, 0), (-1, 0, 0))
+            3.141592653589793
+    """
+    # print_v1 = tf.Print(v1, [v1])
+    # print_v2 = tf.Print(v2, [v2])
+    
+    v1_u = tf.nn.l2_normalize(v1)
+    v2_u = tf.nn.l2_normalize(v2)
+    return tf.acos(tf.clip_by_value(tf.matmul(tf.transpose(v1_u), v2_u), -1.0 + epsilon, 1.0 - epsilon))
+
+def get_arccos_integral(v1, v2):
+    # 1/pi  * norm(v1)*norm(v2) * (sin(alpha) + (pi-alpha)cos(alpha))
+    angle = angle_between(v1, v2)
+    return ((tf.norm(v1) * tf.norm(v2)) / np.pi) * (tf.sin(angle) + (np.pi - angle)*tf.cos(angle))
+
+def g(u,v):
+    return get_arccos_integral(u,v)
+
+def get_expectation_v2(A, W, THETA):
+        h, d = W.get_shape().as_list()
+        Q = tf.matmul(tf.transpose(A), A)
+        total_expectation = 0
+        print('building regularizer')
+        for i in range(h):
+            print('row {}'.format(i))
+            w_i = tf.reshape(W[i,:], [d, 1])
+            theta_i = tf.reshape(THETA[i,:], [d, 1])
+            u_i = tf.concat([theta_i, w_i], axis=0)
+            v_i = tf.concat([w_i, theta_i], axis=0)
+            for j in range(i+1):
+                w_j = tf.reshape(W[j,:], [d, 1])
+                theta_j = tf.reshape(THETA[j,:], [d, 1])
+                u_j = tf.concat([theta_j, w_j], axis=0)
+                v_j = tf.concat([w_j, theta_j], axis=0)
+                if j < i:
+                    factor = 2
+                else:
+                    factor = 1
+                total_expectation += factor*2*Q[i,j]*(g(u_i, u_j) - g(u_i, v_j))
+        return tf.squeeze(total_expectation)
 
 class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
     def __init__(self,
@@ -143,45 +190,40 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         A = array_ops.transpose(self._kernel_out)
         return A, W, THETA
 
-    # when using only one network for all the dimensions together.
-    def get_very_sparse_regularizer(self):
-        def angle_between(v1, v2, epsilon=1e-5):
-            """ Returns the angle in radians between vectors 'v1' and 'v2'::
-
-                    >>> angle_between((1, 0, 0), (0, 1, 0))
-                    1.5707963267948966
-                    >>> angle_between((1, 0, 0), (1, 0, 0))
-                    0.0
-                    >>> angle_between((1, 0, 0), (-1, 0, 0))
-                    3.141592653589793
-            """
-            # print_v1 = tf.Print(v1, [v1])
-            # print_v2 = tf.Print(v2, [v2])
-            
-            v1_u = tf.nn.l2_normalize(v1)
-            v2_u = tf.nn.l2_normalize(v2)
-            return tf.acos(tf.clip_by_value(tf.matmul(tf.transpose(v1_u), v2_u), -1.0 + epsilon, 1.0 - epsilon))
-
-        def get_arccos_integral(v1, v2):
-            # 1/pi  * norm(v1)*norm(v2) * (sin(alpha) + (pi-alpha)cos(alpha))
-            angle = angle_between(v1, v2)
-            return ((tf.norm(v1) * tf.norm(v2)) / np.pi) * (tf.sin(angle) + (np.pi - angle)*tf.cos(angle))
+    # # when using only one network for all the dimensions together.
+    # def get_very_sparse_regularizer(self):
+    #     # A, W, THETA = self.get_weights()
+    #     A = self._kernel_out 
+    #     _W, _THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
+    #     W = tf.transpose(_W)
+    #     THETA = tf.transpose(_THETA)
+    #     # THETA = tf.Print(tmp_THETA, [tmp_THETA, W], 'weight vectors:')
+    #     # print(self._kernel)
+    #     # print(W, THETA)
         
-        # A, W, THETA = self.get_weights()
-        A = self._kernel_out 
-        _W, _THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
-        W = tf.transpose(_W)
-        THETA = tf.transpose(_THETA)
-        # THETA = tf.Print(tmp_THETA, [tmp_THETA, W], 'weight vectors:')
-        # print(self._kernel)
-        # print(W, THETA)
+    #     aa = tf.matmul(A, A, transpose_a=True)
+    #     g_w_w = get_arccos_integral(W, W)
+    #     g_w_theta = get_arccos_integral(W, THETA)
+    #     g_theta_theta = get_arccos_integral(THETA, THETA)
+    #     reg_loss = aa*(g_w_w - 2*g_w_theta + g_theta_theta)
+    #     return tf.squeeze(reg_loss)
+
+    # def get_sparse_regularizer(self):
+    #     # A, W, THETA = self.get_weights()
+    #     A = self._kernel_out 
+    #     _W, _THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
+    #     W = tf.transpose(_W)
+    #     THETA = tf.transpose(_THETA)
+    #     # THETA = tf.Print(tmp_THETA, [tmp_THETA, W], 'weight vectors:')
+    #     # print(self._kernel)
+    #     # print(W, THETA)
         
-        aa = tf.matmul(A, A, transpose_a=True)
-        g_w_w = get_arccos_integral(W, W)
-        g_w_theta = get_arccos_integral(W, THETA)
-        g_theta_theta = get_arccos_integral(THETA, THETA)
-        reg_loss = aa*(g_w_w - 2*g_w_theta + g_theta_theta)
-        return tf.squeeze(reg_loss)
+    #     aa = tf.matmul(A, A, transpose_a=True)
+    #     g_w_w = get_arccos_integral(W, W)
+    #     g_w_theta = get_arccos_integral(W, THETA)
+    #     g_theta_theta = get_arccos_integral(THETA, THETA)
+    #     reg_loss = aa*(g_w_w - 2*g_w_theta + g_theta_theta)
+    #     return tf.squeeze(reg_loss)
 
     def _get_comm_regularizer(self, epsilon=1e-3):
         def G(U, V, norm_matrix):
@@ -190,8 +232,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             #cos_alpha = tf.Print(_cos_alpha, [_cos_alpha], 'cos_alpha', summarize=10000)
             alpha = tf.acos(cos_alpha)
             #alpha = tf.Print(_alpha, [cos_alpha, _alpha], 'cos_alpha and alpha', summarize=10000)
-            _norms = (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
-            norms = tf.Print(_norms, [_norms], 'cos_alpha and alpha', summarize=10000)
+            norms = (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
+            # norms = tf.Print(_norms, [_norms], 'cos_alpha and alpha', summarize=10000)
             #return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
             return norms
         
@@ -210,8 +252,49 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # print('norm_per_row: ', norm_per_row)
         
         # norm_matrix_ij = norm(u_i)*norm(u_j)
-        _norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
-        norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
+        norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+        # norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
+        
+        # print('norm_matrix: ', norm_matrix)
+
+        UU = G(U, U, norm_matrix)
+        UV = G(U, V, norm_matrix)
+
+        return tf.reduce_sum(2*tf.multiply(Q, UU-UV))
+
+    def _get_comm_regularizer_sparse(self, epsilon=1e-3):
+        def G(U, V, norm_matrix):
+            inner_prod_mat = tf.matmul(U, V, transpose_b=True)
+            cos_alpha = tf.divide(inner_prod_mat, norm_matrix + epsilon)
+            #cos_alpha = tf.Print(_cos_alpha, [_cos_alpha], 'cos_alpha', summarize=10000)
+            alpha = tf.acos(cos_alpha)
+            #alpha = tf.Print(_alpha, [cos_alpha, _alpha], 'cos_alpha and alpha', summarize=10000)
+            norms = (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
+            # norms = tf.Print(_norms, [_norms], 'cos_alpha and alpha', summarize=10000)
+            #return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
+            return norms
+        
+        W, THETA = array_ops.split(self._kernel, num_or_size_splits=2 , axis=0)
+        W = array_ops.transpose(W)
+        THETA = array_ops.transpose(THETA)
+        A = array_ops.transpose(self._kernel_out)
+        # A, W, THETA = self.get_weights()
+        # print('A: ', A)
+        # print('W: ', W)
+        # print('THETA: ', THETA)
+        # A = tf.Print(_A, [_A, W, THETA], "weights:", summarize=100)
+        Q = tf.matmul(A, A, transpose_a=True)
+        U = tf.concat([THETA, W], axis=1)
+        V = tf.concat([W, THETA], axis=1)
+        # print('U: ', U)
+        # the norms of row i of U (they're the same for V)
+        norm_per_row = tf.norm(U, axis=1, keepdims=True)
+        # norm_per_row = tf.Print(_norm_per_row, [_norm_per_row], "norm_per_row: ", summarize=100)
+        # print('norm_per_row: ', norm_per_row)
+        
+        # norm_matrix_ij = norm(u_i)*norm(u_j)
+        norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+        # norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
         
         # print('norm_matrix: ', norm_matrix)
 
@@ -221,8 +304,12 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         return tf.reduce_sum(2*tf.multiply(Q, UU-UV))
 
     def get_comm_regularizer(self):
-        return self.get_very_sparse_regularizer()
-        # return self._get_comm_regularizer()
+        # A = self._kernel_out 
+        # W, THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
+        # print(W, THETA)
+        # return get_expectation_v2(A, W, THETA)
+        # return self.get_very_sparse_regularizer()
+        return self._get_comm_regularizer_sparse()
 
     # @tf_utils.shape_type_conversion
     def build(self, inputs_shape):
@@ -235,30 +322,40 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
 
         # print('inputs_shape {}'.format(self.input_depth))
         if self.initialization_scheme == 'max':
-            print('initializing transition matrix to max')
-            assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
-            print('num of units: ', self._num_units)
-            print('comp dim: ', self._computation_dim)
-            assert self._computation_dim[0] >= 3*self._num_units, '_computation_dim[0] must be at least x3 larger than _num_units to implement maximum.'
-            assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement maximum.'
+            kernel_init_arr = np.zeros((2, self.neurons_per_cell))
+            kernel_out_init_arr = np.zeros((self.neurons_per_cell, 1))
+            kernel_init_arr[0,0] = 1.
+            kernel_init_arr[1,0] = -1.
+            kernel_init_arr[1,1] = 1.
+            kernel_init_arr[1,2] = -1.
+
+            kernel_out_init_arr[0,0] = 1.
+            kernel_out_init_arr[1,0] = 1.
+            kernel_out_init_arr[2,0] = -1.
+            # print('initializing transition matrix to max')
+            # assert self.input_depth == self._num_units, 'input_depth must be equal to _num_units.'
+            # print('num of units: ', self._num_units)
+            # print('comp dim: ', self._computation_dim)
+            # assert self._computation_dim[0] >= 3*self._num_units, '_computation_dim[0] must be at least x3 larger than _num_units to implement maximum.'
+            # assert self._computation_dim[1] >= self._num_units, '_computation_dim[1] must be at least the size of _num_unit to implement maximum.'
             
-            kernel_init_arr = np.zeros((self.input_depth + self._num_units,
-                                                    self._computation_dim[0]))
-            # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
-            # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
-            for i in range(self._num_units):
-                kernel_init_arr[i, 3*i] = 1
-                kernel_init_arr[i+self._num_units, 3*i] = -1
-                kernel_init_arr[i+self._num_units, 3*i+1] = 1
-                kernel_init_arr[i+self._num_units, 3*i+2] = -1
+            # kernel_init_arr = np.zeros((self.input_depth + self._num_units,
+            #                                         self._computation_dim[0]))
+            # # kernel_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            # # kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim))
+            # for i in range(self._num_units):
+            #     kernel_init_arr[i, 3*i] = 1
+            #     kernel_init_arr[i+self._num_units, 3*i] = -1
+            #     kernel_init_arr[i+self._num_units, 3*i+1] = 1
+            #     kernel_init_arr[i+self._num_units, 3*i+2] = -1
             
-            kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
-            # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
-            # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
-            for i in range(self._num_units):
-                kernel_out_init_arr[3*i, i] = 1
-                kernel_out_init_arr[3*i+1, i] = 1
-                kernel_out_init_arr[3*i+2, i] = -1
+            # kernel_out_init_arr = np.zeros((self._computation_dim[0], self._computation_dim[1]))
+            # # kernel_out_init_arr = np.random.uniform(low=-RAND_BOUND, high=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            # # kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim, self._num_units))
+            # for i in range(self._num_units):
+            #     kernel_out_init_arr[3*i, i] = 1
+            #     kernel_out_init_arr[3*i+1, i] = 1
+            #     kernel_out_init_arr[3*i+2, i] = -1
 
 
         elif self.initialization_scheme == 'sum':

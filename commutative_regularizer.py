@@ -26,6 +26,22 @@ def get_arccos_integral(v1, v2):
     angle = angle_between(v1, v2)
     return ((tf.norm(v1) * tf.norm(v2)) / np.pi) * (tf.sin(angle) + (np.pi - angle)*tf.cos(angle))
 
+def get_very_sparse_regularizer(A, W, THETA):
+        # A, W, THETA = self.get_weights()
+        # _W, _THETA = array_ops.split(self._kernel, num_or_size_splits=2, axis=0)
+        # W = tf.transpose(_W)
+        # THETA = tf.transpose(_THETA)
+        # THETA = tf.Print(tmp_THETA, [tmp_THETA, W], 'weight vectors:')
+        # print(self._kernel)
+        # print(W, THETA)
+        
+        aa = tf.matmul(A, A, transpose_a=True)
+        g_w_w = get_arccos_integral(W, W)
+        g_w_theta = get_arccos_integral(W, THETA)
+        g_theta_theta = get_arccos_integral(THETA, THETA)
+        reg_loss = aa*(g_w_w - 2*g_w_theta + g_theta_theta)
+        return tf.squeeze(reg_loss)
+
 def get_expectation(A, W, THETA):
     h, d = W.get_shape().as_list()
     Q = tf.matmul(tf.transpose(A), A)
@@ -78,7 +94,6 @@ def get_expectation_v3(A, W, THETA, epsilon=1e-4):
     Q = tf.matmul(A, A, transpose_a=True)
     U = tf.concat([THETA, W], axis=1)
     V = tf.concat([W, THETA], axis=1)
-    
     # the norms of row i of U (they're the same for V)
     norm_per_row = tf.norm(U, axis=1, keepdims=True)
     
@@ -94,10 +109,13 @@ def get_expectation_v3(A, W, THETA, epsilon=1e-4):
 if __name__=='__main__':
     from CommutativeRNNcell import CommutativeRNNcell
     # A = tf.Variable(np.random.random((10, 256)))
-    A = tf.Variable(np.random.random((10, 80)))
+    # A = tf.Variable(np.random.random((10, 80)))
+    A = tf.Variable(np.array([1,1,-1]).reshape(1,3), dtype=tf.float32)
 
-    W = tf.Variable(np.random.random((80, 10)))
-    THETA = tf.Variable(np.random.random((80, 10)))
+    W = tf.Variable(np.array([1,0,0]).reshape(3,1), dtype=tf.float32)
+    # W = tf.Variable(np.random.random((80, 10)))
+    THETA = tf.Variable(np.array([-1,1,-1]).reshape(3,1), dtype=tf.float32)
+    # THETA = tf.Variable(np.random.random((80, 10)))
     # A = tf.Variable(np.random.random((10, 10)))
     # W = tf.Variable(np.random.random((10, 10)))
     # THETA = tf.Variable(np.random.random((10, 10)))
@@ -105,9 +123,17 @@ if __name__=='__main__':
     reg_v2 = get_expectation_v2(A, W, THETA)
     reg_v3 = get_expectation_v3(A, W, THETA)
 
+    U = tf.transpose(tf.concat([THETA, W], axis=1))
+    V = tf.transpose(tf.concat([W, THETA], axis=1))
+    # print(U, V)
+    # exit()
+    guv = get_arccos_integral(U, V)
+    guu = get_arccos_integral(U, U)
+    gvv = get_arccos_integral(V, V)
+
     sess = tf.InteractiveSession()
     sess.run(tf.global_variables_initializer())
 
 
+    print(sess.run([guv, guu, gvv]))
     print(sess.run([reg_v2, reg_v3]))
-    # print(sess.run([reg_v1, reg_v2, reg_v3]))
