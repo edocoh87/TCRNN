@@ -13,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.util import nest
 
-RAND_BOUND = 0.1
+RAND_BOUND = .1
 MINUS_INF = -1e4
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
@@ -260,8 +260,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # shape=[self.input_depth + self._num_units, self._computation_dim])
             trainable=self.trainable,
             shape=[self.input_depth + self._num_units, self._computation_dim[0]],
-            # initializer=tf.constant_initializer(kernel_init_arr))
-            initializer=tf.initializers.identity(dtype=self.dtype))
+            initializer=tf.constant_initializer(kernel_init_arr))
+            #initializer=tf.initializers.identity(dtype=self.dtype))
         
         # the output weights don't exist in the standard implementation.
         self.__kernel_out = self.add_variable(
@@ -269,8 +269,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # shape=[self._computation_dim, self._num_units])
             trainable=self.trainable,
             shape=[self._computation_dim[0], self._computation_dim[1]],
-            # initializer=tf.constant_initializer(kernel_out_init_arr))
-            initializer=tf.initializers.identity(dtype=self.dtype))
+            initializer=tf.constant_initializer(kernel_out_init_arr))
+            #initializer=tf.initializers.identity(dtype=self.dtype))
 
         self.__kernels = [self.add_variable(
             "kernel_{}".format(i+1),
