@@ -43,8 +43,8 @@ parser.add_argument('--restore_from_path', type=str, default=None)
 parser.add_argument('--input_model_arch', type=str, default='[]')
 parser.add_argument('--output_model_arch', type=str, default='[]')
 parser.add_argument('--reg_coef', type=float, default=1e-1)
-parser.add_argument('--l1_coef', type=float, default=1.0)
-parser.add_argument('--l2_coef', type=float, default=1.0)
+parser.add_argument('--l1_coef', type=float, default=0.0)
+parser.add_argument('--l2_coef', type=float, default=0.0)
 parser.add_argument('--lr_schedule', type=str, default="[(np.inf, (1e-3, 1.0))]")
 parser.add_argument('--aggregation_mode', type=str, choices=['sum', 'max'], default='sum',
             help="the aggregation mode to use (relevant only for DeepSet architecture.")
@@ -120,13 +120,13 @@ elif args.experiment == 'dgt-anmly':
     n_input_dim = 1
     n_output_dim = 2
     data_params = {'n_samples': 100000,
-                   'max_seq_len': 50,
+                   'max_seq_len': 40,
                    'min_seq_len': 10,
                    'mode': 'anmly'}
-    seq_max_len = 50
+    seq_max_len = 40
     use_seqlen = True
     eval_on_varying_seq = True
-    test_sequences = np.arange(10, 50, 5)
+    test_sequences = np.arange(30, 70, 10)
     num_test_examples = 500
 
 elif args.experiment == 'san-disk':
@@ -147,7 +147,7 @@ elif args.experiment == 'celeba':
     use_seqlen = False
     eval_on_varying_seq = False
 
-eval_on_varying_seq = False
+#eval_on_varying_seq = False
 
 if args.n_computation_dim is None:
     n_computation_dim = [n_hidden_dim]
@@ -384,12 +384,18 @@ with tf.Session() as sess:
             data_params['n_samples'] = num_test_examples
             data_params['max_seq_len'] = curr_seq_len
 
-            test_correct_pred = tf.equal(tf.round(test_pred), test_y_ph)
+            #test_correct_pred = tf.equal(tf.round(test_pred), test_y_ph)
+            if n_output_dim == 1:
+                test_correct_pred = tf.equal(tf.round(test_pred), test_y_ph)
+            else:
+                test_correct_pred = tf.equal(tf.argmax(test_pred, axis=1), tf.argmax(test_y_ph, axis=1))
+            
             test_accuracy = tf.reduce_mean(tf.cast(test_correct_pred, tf.float32))
             curr_testset = DataGenerator(**data_params, train=False)
             test_x, test_y, test_seqlen = curr_testset.next()
             curr_feed_dict = {test_x_ph: test_x,
                               test_y_ph: test_y,
+                              seqlen: test_seqlen,
                               test_seqlen_ph: test_seqlen}
             _test_accuracy = sess.run(test_accuracy, feed_dict = curr_feed_dict)
             print("Testing Accuracy for length {}: {}".format(curr_seq_len, _test_accuracy))

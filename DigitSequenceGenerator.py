@@ -57,7 +57,8 @@ class DigitSequenceGenerator(DataGenerator):
             elif mode == 'max':
                 label = [np.max(np.array(s))]
             elif mode == 'prty':
-                label = to_onehot(sum(np.array(s))%2, 2)
+                #label = to_onehot(sum(np.array(s))%2, 2)
+                label = int((sum(np.array(s))%2)[0])
             elif mode == 'anmly':
                 # label is 1 if there are three consecutive identical numbers
                 # or if the sum of the sequence is greater than 120.
