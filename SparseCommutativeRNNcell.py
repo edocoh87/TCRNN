@@ -274,34 +274,37 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             #return (norm_matrix/np.pi) * (tf.sin(alpha) + (np.pi - alpha) * cos_alpha)
             return norms
         
-        W, THETA = array_ops.split(self._kernel, num_or_size_splits=2 , axis=0)
-        W = array_ops.transpose(W)
-        THETA = array_ops.transpose(THETA)
-        A = array_ops.transpose(self._kernel_out)
-        # A, W, THETA = self.get_weights()
-        # print('A: ', A)
-        # print('W: ', W)
-        # print('THETA: ', THETA)
-        # A = tf.Print(_A, [_A, W, THETA], "weights:", summarize=100)
-        Q = tf.matmul(A, A, transpose_a=True)
-        U = tf.concat([THETA, W], axis=1)
-        V = tf.concat([W, THETA], axis=1)
-        # print('U: ', U)
-        # the norms of row i of U (they're the same for V)
-        norm_per_row = tf.norm(U, axis=1, keepdims=True)
-        # norm_per_row = tf.Print(_norm_per_row, [_norm_per_row], "norm_per_row: ", summarize=100)
-        # print('norm_per_row: ', norm_per_row)
-        
-        # norm_matrix_ij = norm(u_i)*norm(u_j)
-        norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
-        # norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
-        
-        # print('norm_matrix: ', norm_matrix)
+        total_expectation = 0
+        for (kernel, kernel_out) in zip(self._kernel, self._kernel_out):
+            W, THETA = array_ops.split(kernel, num_or_size_splits=2 , axis=0)
+            W = array_ops.transpose(W)
+            THETA = array_ops.transpose(THETA)
+            A = array_ops.transpose(kernel_out)
+            # A, W, THETA = self.get_weights()
+            # print('A: ', A)
+            # print('W: ', W)
+            # print('THETA: ', THETA)
+            # A = tf.Print(_A, [_A, W, THETA], "weights:", summarize=100)
+            Q = tf.matmul(A, A, transpose_a=True)
+            U = tf.concat([THETA, W], axis=1)
+            V = tf.concat([W, THETA], axis=1)
+            # print('U: ', U)
+            # the norms of row i of U (they're the same for V)
+            norm_per_row = tf.norm(U, axis=1, keepdims=True)
+            # norm_per_row = tf.Print(_norm_per_row, [_norm_per_row], "norm_per_row: ", summarize=100)
+            # print('norm_per_row: ', norm_per_row)
+            
+            # norm_matrix_ij = norm(u_i)*norm(u_j)
+            norm_matrix = tf.matmul(norm_per_row, norm_per_row, transpose_b=True)
+            # norm_matrix = tf.Print(_norm_matrix, [norm_per_row, _norm_matrix], 'norms ', summarize=10000)
+            
+            # print('norm_matrix: ', norm_matrix)
 
-        UU = G(U, U, norm_matrix)
-        UV = G(U, V, norm_matrix)
+            UU = G(U, U, norm_matrix)
+            UV = G(U, V, norm_matrix)
+            total_expectation += tf.reduce_sum(2*tf.multiply(Q, UU-UV))
 
-        return tf.reduce_sum(2*tf.multiply(Q, UU-UV))
+        return total_expectation
 
     def get_comm_regularizer(self):
         # A = self._kernel_out 
@@ -319,7 +322,6 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         self.input_depth = inputs_shape[-1]
         assert self._computation_dim[0] % self._num_units == 0, 'computation_dim first element must be divisible by hidden layer size.'
         self.neurons_per_cell = int(self._computation_dim[0] / self._num_units)
-
         # print('inputs_shape {}'.format(self.input_depth))
         if self.initialization_scheme == 'max':
             kernel_init_arr = np.zeros((2, self.neurons_per_cell))
@@ -387,7 +389,8 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # xavier initialization:
             # kernel_init_arr = np.random.rand(self.input_depth + self._num_units,
             #    self._computation_dim)*np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim))
-            kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(2, self.neurons_per_cell))
+            # kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(2, self.neurons_per_cell))
+            kernel_init_arr = [stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(2, self.neurons_per_cell)) for i in range(self._num_units)]
             # kernel_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.input_depth + self._num_units, self.neurons_per_cell))
             #kernel_init_arr = np.random.normal(scale=RAND_BOUND, size=(self.input_depth + self._num_units, self._computation_dim[0]))
             #kernel_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self.input_depth + self._num_units + self._computation_dim)), 
@@ -396,7 +399,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             # kernel_out_init_arr = np.random.rand(self._computation_dim,
             #kernel_out_init_arr = np.random.normal(scale=RAND_BOUND, size=(self._computation_dim[0], self._computation_dim[1]))
             # kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, self._computation_dim[1]))
-            kernel_out_init_arr = stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, 1))
+            kernel_out_init_arr = [stats.truncnorm.rvs(-2*RAND_BOUND, 2*RAND_BOUND, scale=RAND_BOUND, size=(self.neurons_per_cell, 1)) for i in range(self._num_units)]
             #kernel_out_init_arr = np.random.normal(scale=np.sqrt(1.0 / int(self._num_units + self._computation_dim)),
 	    #	 			size=(self._computation_dim, self._num_units))
         
@@ -409,33 +412,33 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # _lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')    
 
         # with tf.variable_scope("rnn_weights"):
-        self.__kernel = self.add_variable(
-            "kernel",
+        self.__kernel = [self.add_variable(
+            "kernel_{}".format(i+1),
             # shape=[self.input_depth + self._num_units, self._computation_dim])
             trainable=self.trainable,
             # shape=[self.input_depth + self._num_units, self._computation_dim[0]],
             shape=[2, self.neurons_per_cell],
             # shape=[self.input_depth + self._num_units, self.neurons_per_cell],
-            initializer=tf.constant_initializer(kernel_init_arr))
+            initializer=tf.constant_initializer(kernel_init_arr[i])) for i in range(self._num_units)]
             # initializer=tf.initializers.identity(dtype=self.dtype))
         
         # the output weights don't exist in the standard implementation.
-        self.__kernel_out = self.add_variable(
-            "kernel_out",
+        self.__kernel_out = [self.add_variable(
+            "kernel_out_{}".format(i+1),
             # shape=[self._computation_dim, self._num_units])
             trainable=self.trainable,
             # shape=[self._computation_dim[0], self._computation_dim[1]],
             shape=[self.neurons_per_cell, 1],
             # shape=[self.neurons_per_cell, self._computation_dim[1]],
-            initializer=tf.constant_initializer(kernel_out_init_arr))
+            initializer=tf.constant_initializer(kernel_out_init_arr[i])) for i in range(self._num_units)]
 
 
-        self.__kernels = [self.add_variable(
-            "kernel_{}".format(i+1),
-            # shape=[self._computation_dim, self._num_units])
-            trainable=self.trainable,
-            shape=[self._computation_dim[i-1], self._computation_dim[i]],
-            initializer=tf.constant_initializer(kernels_init_arr[i-2])) for i in range(2, len(self._computation_dim))]
+        # self.__kernels = [self.add_variable(
+        #     "kernel_{}".format(i+1),
+        #     # shape=[self._computation_dim, self._num_units])
+        #     trainable=self.trainable,
+        #     shape=[self._computation_dim[i-1], self._computation_dim[i]],
+        #     initializer=tf.constant_initializer(kernels_init_arr[i-2])) for i in range(2, len(self._computation_dim))]
 
         # self._bias = self.add_variable(
         #     _BIAS_VARIABLE_NAME,
@@ -451,9 +454,11 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
             return _lr_mult
             
         rnn_lr_ph = tf.get_default_graph().get_tensor_by_name('rnn_lr_ph:0')
-        self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
-        self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
-
+        # self._kernel = lr_mult(rnn_lr_ph)(self.__kernel)
+        # self._kernel_out = lr_mult(rnn_lr_ph)(self.__kernel_out)
+        self._kernel = [lr_mult(rnn_lr_ph)(curr_ker) for curr_ker in self.__kernel]
+        self._kernel_out = [lr_mult(rnn_lr_ph)(curr_ker) for curr_ker in self.__kernel_out]
+        
         # MAKE MATRICES BIG AGAIN!
         # list_of_matrices = []
         # for u in range(self._num_units):
@@ -482,29 +487,48 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         # print('state: ', state)
         # exit()
         input_shape = tf.shape(inputs)
-        # print(input_shape)
-        # exit()
         # print('concatenated: ', array_ops.concat([inputs, state], 1))
         # print('weights: ', self._kernel)
         # _state = tf.Print(state, [state], "state: ", summarize=100)
-        _inputs = array_ops.reshape(inputs, [-1, 1])
-        _state = array_ops.reshape(state, [-1, 1])
-        _input_and_state = array_ops.concat([_inputs, _state], 1) 
-        _input_and_state = tf.nn.dropout(_input_and_state, self.dropout_rate_ph)
-        gate_inputs = math_ops.matmul(_input_and_state, self._kernel)
 
-        # input_and_state = array_ops.concat([inputs, state], 1)
-        # input_and_state = tf.nn.dropout(input_and_state, self.dropout_rate_ph)
+        # split to columns coordinatewise
+        inputs_arr = array_ops.split(inputs, self._num_units, 1)
+        state_arr = array_ops.split(state, self._num_units, 1)
+        # print(inputs_arr)
+        # print(state_arr)
+        output_arr = []
+        for i, pair in enumerate(zip(inputs_arr, state_arr)):
+            curr_input_and_state = array_ops.concat(pair, 1) 
+            curr_input_and_state = tf.nn.dropout(curr_input_and_state, self.dropout_rate_ph)
+            gate_inputs = math_ops.matmul(curr_input_and_state, self._kernel[i])
+            gate_outputs = self._activation(gate_inputs)
+            curr_output = math_ops.matmul(gate_outputs, self._kernel_out[i])
+            output_arr.append(curr_output)
+            # print(curr_output)
+        
+        # print('outputs:')
+        # print(output_arr)
+        output = tf.concat(output_arr, axis=1)
+        # print(output)
+        # exit()
+        # _inputs = array_ops.reshape(inputs, [-1, 1])
+        # _state = array_ops.reshape(state, [-1, 1])
+        # _input_and_state = array_ops.concat([_inputs, _state], 1) 
+        # _input_and_state = tf.nn.dropout(_input_and_state, self.dropout_rate_ph)
+        # gate_inputs = math_ops.matmul(_input_and_state, self._kernel)
 
-        # gate_inputs = math_ops.matmul(input_and_state, self._kernel)
+        # # input_and_state = array_ops.concat([inputs, state], 1)
+        # # input_and_state = tf.nn.dropout(input_and_state, self.dropout_rate_ph)
+
+        # # gate_inputs = math_ops.matmul(input_and_state, self._kernel)
         
-        # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
-        gate_outputs = self._activation(gate_inputs)
+        # # gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
+        # gate_outputs = self._activation(gate_inputs)
         
-        # this is not in the standard rnn cell and the reason we had to implement a new cell..
-        # gate_outputs = tf.nn.dropout(gate_outputs, self.dropout_rate_ph)
-        output = math_ops.matmul(gate_outputs, self._kernel_out)
-        output = tf.reshape(output, input_shape)
+        # # this is not in the standard rnn cell and the reason we had to implement a new cell..
+        # # gate_outputs = tf.nn.dropout(gate_outputs, self.dropout_rate_ph)
+        # output = math_ops.matmul(gate_outputs, self._kernel_out)
+        # output = tf.reshape(output, input_shape)
 
         # _inputs = output
         # for i in range(len(self._kernels)):
