@@ -22,7 +22,6 @@ import models
 parser = argparse.ArgumentParser(description='Run set experiments.')
 parser.add_argument('--model', required=True, type=str, choices=['CommRNN', 'DeepSet'],
                                 help="model to use for experiment.")
-parser.add_argument('--display_step', type=int, default=200)
 parser.add_argument('--training_steps', required=True, type=int)
 parser.add_argument('--batch_size', required=True, type=int)
 parser.add_argument('--n_hidden_dim', required=True, type=int)
@@ -32,9 +31,11 @@ parser.add_argument('--experiment', required=True, type=str, choices=
 ######################
 # Optional Arguments
 ######################
+parser.add_argument('--display_step', type=int, default=200)
 parser.add_argument('--n_computation_dim', type=str, default=None)
 #parser.add_argument('--initialize_to_max', action='store_true')
 parser.add_argument('--initialization_scheme', type=str, choices=['max', 'sum', 'rand'], default='rand')
+parser.add_argument('--weight_config', type=str, choices=['dense', 'sparse', 'shared'], default='dense')
 parser.add_argument('--initial_state', type=str, choices=['rand', 'minus-inf', 'zeros'], default='rand')
 parser.add_argument('--non_trainable_rnn', action='store_false')
 parser.add_argument('--save_model_to_path', type=str, default=None)
@@ -195,6 +196,7 @@ if ARCHITECTURE == 'CommRNN':
                 dropout_rate_ph=rnn_dropout_rate_ph,
                 trainable=args.non_trainable_rnn,
                 initialization_scheme=args.initialization_scheme,
+                weight_config=args.weight_config,
                 initial_state=args.initial_state,
                 activation=tf.nn.relu,
                 input_model_fn=input_model_fn,
@@ -227,7 +229,7 @@ cost = loss if commutative_regularization_term is None else \
 
 # set L1 regularization on RNN weights.
 rnn_weights = tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES, scope="rnn/commutative_rn_ncell")
-if len(rnn_weights) > 0:
+if (args.l1_coef + args.l2_coef > 0):
     norm_regularizer = tf.contrib.layers.l1_l2_regularizer(scale_l1=args.l1_coef, scale_l2=args.l2_coef)
     norm_regularization_penalty = tf.contrib.layers.apply_regularization(norm_regularizer, rnn_weights)
     cost += norm_regularization_penalty
@@ -344,6 +346,25 @@ with tf.Session() as sess:
                                                               output_dropout_rate_ph: 1.0,
                                                               rnn_dropout_rate_ph: 1.0,})
                 summary_print += ", Validation Accuracy={:.5f}".format(val_acc)
+
+                pred1 = sess.run(pred, feed_dict = {x: val_data[0],
+                                                    y: val_data[1],
+                                                    input_dropout_rate_ph: 1.0,
+                                                    output_dropout_rate_ph: 1.0,
+                                                    rnn_dropout_rate_ph: 1.0,})
+                shuffled_data = val_data[0]
+                for i in range(len(shuffled_data)):
+                    curr_perm = np.random.permutation(len(shuffled_data[i]))
+                    shuffled_data[i] = shuffled_data[i][curr_perm]
+
+                shuffled_pred = sess.run(pred, feed_dict = {x: shuffled_data,
+                                                            y: val_data[1],
+                                                            input_dropout_rate_ph: 1.0,
+                                                            output_dropout_rate_ph: 1.0,
+                                                            rnn_dropout_rate_ph: 1.0,})
+
+                mse = ((pred1 - shuffled_pred)**2).mean()
+                summary_print += ", MSE on shuffled val data={:.5f}".format(mse)
                 #summary_print += ", Validation Accuracy=" + "{:.5f}".format(val_acc)
             print(summary_print)
             # for i in range(len(_pred)):

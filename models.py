@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 from functools import partial
 
-# from CommutativeRNNcell import CommutativeRNNcell
-from SparseCommutativeRNNcell import CommutativeRNNcell
+from CommutativeRNNcell import CommutativeRNNcell
+# from SparseCommutativeRNNcell import CommutativeRNNcell
 import commutative_regularizer
 
 def create_lr_fn(schedule):
@@ -102,6 +102,7 @@ class CommRNN(object):
                  dropout_rate_ph,
                  initial_state,
                  initialization_scheme,
+                 weight_config,
                  trainable,
                  activation,
                  input_model_fn,
@@ -112,6 +113,7 @@ class CommRNN(object):
         self.dropout_rate_ph = dropout_rate_ph
         self.initial_state = initial_state
         self.initialization_scheme = initialization_scheme 
+        self.weight_config = weight_config
         self.trainable = trainable
         self.activation = activation
         self.input_model_fn = input_model_fn
@@ -122,6 +124,7 @@ class CommRNN(object):
                                 dropout_rate_ph = self.dropout_rate_ph,
                                 initial_state = self.initial_state,
                                 initialization_scheme = self.initialization_scheme,
+                                weight_config = self.weight_config,
                                 trainable = self.trainable,
                                 activation = self.activation)
 
