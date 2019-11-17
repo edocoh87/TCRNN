@@ -66,7 +66,7 @@ class CommutativeRNNcell(tf.contrib.rnn.BasicRNNCell):
         return self._num_units
       
     def get_weights(self):
-        print('get weights: ', self.input_depth)
+        # print('get weights: ', self.input_depth)
         W, THETA = array_ops.split(self._kernel, tf.convert_to_tensor([self.input_depth.value, self._num_units]), 0)
         W = array_ops.transpose(W)
         THETA = array_ops.transpose(THETA)

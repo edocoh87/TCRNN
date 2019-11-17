@@ -99,10 +99,12 @@ class DigitSequenceGenerator(DataGenerator):
         return batch_data, batch_labels, batch_seqlen
 
 if __name__=='__main__':
-    sample = DigitSequenceGenerator(n_samples=20, mode='anmly', min_seq_len=10, max_seq_len=50)
+    sample = DigitSequenceGenerator(n_samples=20, mode='sum', min_seq_len=3, max_seq_len=10)
     # exit()
     for i in range(1):
-        batch_data, batch_labels, batch_seqlen = sample.next(3)
+        batch_data, batch_labels, batch_seqlen = sample.next(1)
+        print(batch_data)
+        print(batch_seqlen)
         print(batch_labels)
         # print(np.array(batch_data))
         # print(batch_labels)

@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.stats as stats
-RAND_BOUND = .1
+RAND_BOUND = .01
 
 def get_init_arrays(
             netowrk_type,

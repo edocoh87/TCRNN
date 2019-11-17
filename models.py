@@ -16,7 +16,8 @@ def create_lr_fn(schedule):
     return lr_fn
 
 def glorot_init(shape):
-    return tf.random_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
+    # return tf.random_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
+    return tf.random_normal(shape=shape, stddev=2. / shape[0])
     #return tf.truncated_normal(shape=shape, stddev=1. / np.sqrt(sum(shape)))
 
 linear_activation = lambda x: x
