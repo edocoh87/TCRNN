@@ -428,6 +428,7 @@ def run(print_log):
             return return_acc
 
 if __name__ == '__main__':
+    print_func2 = lambda x: print(x)
     def print_func(s):
         blank = ' '*200
         print(blank, end='\r', flush=True)
@@ -452,6 +453,6 @@ if __name__ == '__main__':
 
     avg_acc_dict = None
     for r in range(args.num_of_runs):
-        curr_acc_dict = run(print_func)
+        curr_acc_dict = run(print_func2)
         avg_acc_dict = merge_dicts(avg_acc_dict, curr_acc_dict)
     print_results(avg_acc_dict)
